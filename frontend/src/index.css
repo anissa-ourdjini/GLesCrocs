@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  @apply box-border;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-gradient-to-br from-slate-50 via-purple-50 to-orange-50 text-slate-900;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+}
+
+::-webkit-scrollbar {
+  @apply w-2;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-slate-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-primary-500 rounded-full hover:bg-primary-600;
+}
+
+.glass {
+  @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-xl;
+}
+
+.glass-dark {
+  @apply bg-slate-900/80 backdrop-blur-md border border-white/10;
+}
+
+.gradient-primary {
+  @apply bg-gradient-to-r from-primary-600 to-primary-800;
+}
+
+.gradient-accent {
+  @apply bg-gradient-to-r from-accent-500 to-orange-600;
+}
+
+.btn-primary {
+  @apply px-6 py-3 rounded-lg font-semibold text-white gradient-primary shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95;
+}
+
+/* Accessible focus styles */
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible {
+  outline: 3px solid rgba(99,102,241,0.25);
+  outline-offset: 2px;
+  border-radius: 0.5rem;
+}
+
+.btn-secondary {
+  @apply px-6 py-3 rounded-lg font-semibold text-primary-600 border-2 border-primary-600 bg-white hover:bg-primary-50 transition-all duration-200;
+}
+
+.btn-small {
+  @apply px-4 py-2 rounded-md font-medium transition-all duration-200;
+}
+
+.card {
+  @apply glass rounded-2xl p-6 border-l-4 border-primary-500 shadow-sm hover:shadow-md transition-all duration-300;
+  min-height: 64px;
+}
+
+.input-field {
+  @apply w-full px-4 py-3 rounded-lg border-2 border-slate-200 focus:border-primary-500 focus:outline-none bg-white transition-colors duration-200;
+}
+
+.badge {
+  @apply inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium;
+}
+
+.badge-success {
+  @apply badge bg-green-100 text-green-700;
+}
+
+.badge-warning {
+  @apply badge bg-yellow-100 text-yellow-700;
+}
+
+.badge-danger {
+  @apply badge bg-red-100 text-red-700;
+}
+
+.badge-info {
+  @apply badge bg-blue-100 text-blue-700;
+}
+
+.number-display {
+  @apply text-6xl font-bold text-primary-600 animate-bounce-in;
+}
+
+/* Utility: subtle container for small help text */
+.muted {
+  @apply text-sm text-slate-500;
+}
