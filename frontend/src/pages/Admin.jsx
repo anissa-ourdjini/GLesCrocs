@@ -5,9 +5,96 @@ import { connectSocket } from '../services/socket';
 import { LogOut, Check, Clock, AlertCircle } from 'lucide-react';
 import { getMenuImage } from '../utils/images';
 
+const blankItem = { name: '', description: '', price_cents: '', avg_prep_seconds: 300, image_url: '', active: true };
+
+function MenuForm({ data, setData, onSubmit, submitLabel, onCancel, notify }) {
+  const [uploading, setUploading] = useState(false);
+  const price = data.price_cents ? Number(data.price_cents) / 100 : '';
+  const prepMinutes = Math.round((data.avg_prep_seconds || 300) / 60);
+  const preview = data.image_url ? `${API_URL}${data.image_url}` : getMenuImage(data.name);
+
+  async function handleUpload(file) {
+    if (!file) return;
+    try {
+      setUploading(true);
+      const { url } = await api.uploadImage(file);
+      setData(i => ({ ...i, image_url: url }));
+      notify?.('Image téléversée ✓');
+    } catch (err) {
+      notify?.(err.message || 'Upload échoué');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-2">Nom</label>
+          <input className="input-field" value={data.name} onChange={e => setData({ ...data, name: e.target.value })} placeholder="Ex: Ramen Shoyu" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-2">Prix (€)</label>
+          <input type="number" min="0" step="0.01" className="input-field" value={price} onChange={e => setData({ ...data, price_cents: Math.round(Number(e.target.value || 0) * 100) })} placeholder="Ex: 11.00" />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-2">Description</label>
+        <textarea className="input-field" rows={3} value={data.description} onChange={e => setData({ ...data, description: e.target.value })} placeholder="Ex: Bouillon soja, porc, nouilles" />
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-2">URL de l'image</label>
+          <input className="input-field" value={data.image_url} onChange={e => setData({ ...data, image_url: e.target.value })} placeholder="/uploads/xxx.jpg ou https://..." />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-2">Téléverser</label>
+          <div className="flex items-center gap-3">
+            <input type="file" accept="image/*" onChange={e => handleUpload(e.target.files?.[0])} />
+            {uploading && <span className="text-sm text-slate-500">Envoi...</span>}
+          </div>
+          <p className="muted mt-1">Servies depuis /uploads/</p>
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-2">Préparation (min)</label>
+          <input type="number" min="1" step="1" className="input-field" value={prepMinutes} onChange={e => setData({ ...data, avg_prep_seconds: Math.max(1, Number(e.target.value || 5)) * 60 })} />
+        </div>
+        <div className="flex items-center gap-2 pt-7">
+          <input id="active" type="checkbox" checked={!!data.active} onChange={e => setData({ ...data, active: e.target.checked })} />
+          <label htmlFor="active" className="text-sm text-slate-700">Actif</label>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between mt-2">
+        <div className="flex items-center gap-3">
+          <span className="muted">Prévisualisation:</span>
+          <img src={preview} alt="preview" className="w-20 h-16 object-cover rounded-md border border-slate-200 bg-slate-50" onError={(e)=>{e.target.style.display='none'}} />
+        </div>
+        <div className="flex gap-3">
+          {onCancel && (
+            <button onClick={onCancel} className="btn-secondary">
+              Annuler
+            </button>
+          )}
+          <button onClick={onSubmit} className="btn-primary">
+            {submitLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Admin() {
   const { t } = useTranslation();
   const [authed, setAuthed] = useState(!!localStorage.getItem('admin_token'));
+  const [hasAdmin, setHasAdmin] = useState(true);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,12 +103,21 @@ export default function Admin() {
   const [queue, setQueue] = useState({ currentServing: 0, queue: [] });
   const [menu, setMenu] = useState([]);
   const [notification, setNotification] = useState('');
-  const [newItem, setNewItem] = useState({ name: '', description: '', price_cents: '', avg_prep_seconds: 300, image_url: '', active: true });
-  const [uploading, setUploading] = useState(false);
+  const [newItem, setNewItem] = useState(blankItem);
   const [editingItem, setEditingItem] = useState(null);
   const [editFormData, setEditFormData] = useState(null);
 
   useEffect(() => {
+    // Check if at least one admin exists (for bootstrap flow)
+    (async () => {
+      try {
+        const info = await api.authInfo();
+        setHasAdmin(!!info.hasAdmin);
+      } catch {
+        setHasAdmin(true);
+      }
+    })();
+
     if (authed) {
       loadQueue();
       loadMenu();
@@ -96,6 +192,21 @@ export default function Admin() {
     setEditFormData({ ...item });
   }
 
+  async function addItem() {
+    if (!newItem.name || !newItem.price_cents) {
+      showNotification('Nom et prix requis');
+      return;
+    }
+    try {
+      await api.createMenuItem({ ...newItem });
+      setNewItem(blankItem);
+      await loadMenu();
+      showNotification('Plat ajouté ✓');
+    } catch (e) {
+      showNotification(`Erreur: ${e.message}`);
+    }
+  }
+
   async function saveEditedItem() {
     if (!editFormData.name || !editFormData.price_cents) {
       showNotification('Nom et prix requis');
@@ -117,7 +228,7 @@ export default function Admin() {
     setAuthed(false);
   }
 
-  if (!authed) {
+  if (!authed && hasAdmin) {
     return (
       <div className="min-h-[calc(100vh-200px)] flex items-center justify-center">
         <div className="card w-full max-w-md">
@@ -165,15 +276,60 @@ export default function Admin() {
               {t('admin.signIn')}
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
 
-          <div className="space-y-2">
-            <p className="text-xs text-slate-500 text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
-              💡 Demo: <code className="font-mono">admin@demo.local</code> / <code className="font-mono">Admin@123</code>
-            </p>
-            <p className="text-xs text-center text-slate-600">
-              Pas de compte ? Créez-le avec email + mot de passe (6+ caractères)
-            </p>
+  // Bootstrap: show first-admin creation when no admin exists yet
+  if (!authed && !hasAdmin) {
+    return (
+      <div className="min-h-[calc(100vh-200px)] flex items-center justify-center">
+        <div className="card w-full max-w-md">
+          <div className="text-center mb-6">
+            <h1 className="text-2xl font-bold">Créer le premier administrateur</h1>
+            <p className="text-sm text-slate-600 mt-1">Ce formulaire est disponible uniquement car aucun admin n’existe encore.</p>
           </div>
+
+          {notification && (
+            <div className="mb-4 p-3 bg-red-100 border border-red-500 rounded-lg text-red-700 text-sm">
+              {notification}
+            </div>
+          )}
+
+          <div className="space-y-4 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+              <input type="email" value={newAdminEmail} onChange={(e) => setNewAdminEmail(e.target.value)} className="input-field" placeholder="vous@exemple.com" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Mot de passe</label>
+              <input type="password" value={newAdminPassword} onChange={(e) => setNewAdminPassword(e.target.value)} className="input-field" placeholder="••••••••" />
+              <p className="text-xs text-slate-500 mt-2">Minimum 6 caractères</p>
+            </div>
+          </div>
+
+          <button
+            onClick={async () => {
+              try {
+                const res = await api.register(newAdminEmail, newAdminPassword);
+                if (res?.token) {
+                  localStorage.setItem('admin_token', res.token);
+                  setAuthed(true);
+                  setHasAdmin(true);
+                  setNotification('Admin créé ✓');
+                } else {
+                  setNotification('Création réussie, veuillez vous connecter');
+                }
+              } catch (e) {
+                setNotification(e.message || 'Erreur de création');
+                setTimeout(() => setNotification(''), 3000);
+              }
+            }}
+            className="btn-primary w-full"
+          >
+            Créer l’admin
+          </button>
         </div>
       </div>
     );
@@ -365,91 +521,7 @@ export default function Admin() {
         {/* Add new menu item */}
         <div className="card mb-6">
           <h3 className="text-lg font-bold mb-4">Ajouter un plat</h3>
-          <div className="grid md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Nom</label>
-              <input className="input-field" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} placeholder="Ex: Ramen Shoyu" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Prix (€)</label>
-              <input type="number" min="0" step="0.01" className="input-field" value={newItem.price_cents ? (Number(newItem.price_cents)/100) : ''} onChange={e => setNewItem({ ...newItem, price_cents: Math.round(Number(e.target.value || 0) * 100) })} placeholder="Ex: 11.00" />
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-2">Description</label>
-              <textarea className="input-field" rows={3} value={newItem.description} onChange={e => setNewItem({ ...newItem, description: e.target.value })} placeholder="Ex: Bouillon soja, porc, nouilles" />
-            </div>
-            <div className="md:col-span-2 grid sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">URL de l'image (optionnel)</label>
-                <input className="input-field" value={newItem.image_url} onChange={e => setNewItem({ ...newItem, image_url: e.target.value })} placeholder="Ex: /uploads/xxx.jpg ou https://..." />
-                <p className="muted mt-1">Laissez vide pour utiliser l'image automatique basée sur le nom.</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Ou téléverser une image</label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      try {
-                        setUploading(true);
-                        const { url } = await api.uploadImage(file);
-                        setNewItem(i => ({ ...i, image_url: url }));
-                        showNotification('Image téléversée ✓');
-                      } catch (err) {
-                        setNotification(err.message || "Upload échoué");
-                        setTimeout(() => setNotification(''), 3000);
-                      } finally {
-                        setUploading(false);
-                      }
-                    }}
-                  />
-                  {uploading && <span className="text-sm text-slate-500">Envoi...</span>}
-                </div>
-                <p className="muted mt-1">Les images sont servies depuis l'API en /uploads/</p>
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Préparation (min)</label>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                className="input-field"
-                value={Math.round((newItem.avg_prep_seconds || 300) / 60)}
-                onChange={e => setNewItem({ ...newItem, avg_prep_seconds: Math.max(1, Number(e.target.value || 5)) * 60 })}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <input id="active" type="checkbox" checked={!!newItem.active} onChange={e => setNewItem({ ...newItem, active: e.target.checked })} />
-              <label htmlFor="active" className="text-sm text-slate-700">Actif</label>
-            </div>
-          </div>
-          <div className="mt-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="muted">Prévisualisation:</span>
-              <img src={newItem.image_url ? `${API_URL}${newItem.image_url}` : getMenuImage(newItem.name)} alt="preview" className="w-20 h-16 object-cover rounded-md border border-slate-200 bg-slate-50" onError={(e)=>{e.target.style.display='none'}} />
-            </div>
-            <button
-              onClick={async () => {
-                if (!newItem.name || !newItem.price_cents) { showNotification('Nom et prix requis'); return; }
-                try {
-                  await api.createMenuItem({ ...newItem });
-                  setNewItem({ name: '', description: '', price_cents: '', avg_prep_seconds: 300, image_url: '', active: true });
-                  await loadMenu();
-                  showNotification('Plat ajouté ✓');
-                } catch (e) {
-                  console.error('Error adding menu item:', e);
-                  showNotification(`Erreur: ${e.message}`);
-                }
-              }}
-              className="btn-primary"
-            >
-              Ajouter
-            </button>
-          </div>
+          <MenuForm data={newItem} setData={setNewItem} onSubmit={addItem} submitLabel="Ajouter" notify={showNotification} />
         </div>
 
         {menu.length === 0 ? (
@@ -493,90 +565,14 @@ export default function Admin() {
                 {notification}
               </div>
             )}
-
-            <div className="space-y-4 mb-6">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Nom</label>
-                  <input className="input-field" value={editFormData.name} onChange={e => setEditFormData({ ...editFormData, name: e.target.value })} placeholder="Ex: Ramen Shoyu" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Prix (€)</label>
-                  <input type="number" min="0" step="0.01" className="input-field" value={editFormData.price_cents ? (Number(editFormData.price_cents)/100) : ''} onChange={e => setEditFormData({ ...editFormData, price_cents: Math.round(Number(e.target.value || 0) * 100) })} placeholder="Ex: 11.00" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Description</label>
-                <textarea className="input-field" rows={3} value={editFormData.description} onChange={e => setEditFormData({ ...editFormData, description: e.target.value })} placeholder="Ex: Bouillon soja, porc, nouilles" />
-              </div>
-
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">URL de l'image (optionnel)</label>
-                  <input className="input-field" value={editFormData.image_url} onChange={e => setEditFormData({ ...editFormData, image_url: e.target.value })} placeholder="Ex: /uploads/xxx.jpg ou https://..." />
-                  <p className="muted mt-1">Laissez vide pour utiliser l'image automatique basée sur le nom.</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Ou téléverser une image</label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        try {
-                          setUploading(true);
-                          const { url } = await api.uploadImage(file);
-                          setEditFormData(i => ({ ...i, image_url: url }));
-                          showNotification('Image téléversée ✓');
-                        } catch (err) {
-                          setNotification(err.message || "Upload échoué");
-                          setTimeout(() => setNotification(''), 3000);
-                        } finally {
-                          setUploading(false);
-                        }
-                      }}
-                    />
-                    {uploading && <span className="text-sm text-slate-500">Envoi...</span>}
-                  </div>
-                  <p className="muted mt-1">Les images sont servies depuis l'API en /uploads/</p>
-                </div>
-              </div>
-
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Préparation (min)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    className="input-field"
-                    value={Math.round((editFormData.avg_prep_seconds || 300) / 60)}
-                    onChange={e => setEditFormData({ ...editFormData, avg_prep_seconds: Math.max(1, Number(e.target.value || 5)) * 60 })}
-                  />
-                </div>
-                <div className="flex items-center gap-2 pt-7">
-                  <input id="edit-active" type="checkbox" checked={!!editFormData.active} onChange={e => setEditFormData({ ...editFormData, active: e.target.checked })} />
-                  <label htmlFor="edit-active" className="text-sm text-slate-700">Actif</label>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <span className="muted">Prévisualisation:</span>
-                <img src={editFormData.image_url ? `${API_URL}${editFormData.image_url}` : getMenuImage(editFormData.name)} alt="preview" className="w-20 h-16 object-cover rounded-md border border-slate-200 bg-slate-50" onError={(e)=>{e.target.style.display='none'}} />
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button onClick={() => { setEditingItem(null); setEditFormData(null); }} className="btn-secondary w-full">
-                Annuler
-              </button>
-              <button onClick={saveEditedItem} className="btn-primary w-full">
-                Enregistrer
-              </button>
-            </div>
+            <MenuForm
+              data={editFormData}
+              setData={setEditFormData}
+              onSubmit={saveEditedItem}
+              submitLabel="Enregistrer"
+              onCancel={() => { setEditingItem(null); setEditFormData(null); }}
+              notify={showNotification}
+            />
           </div>
         </div>
       )}

@@ -26,11 +26,9 @@ async function main() {
     }
   }
 
-  // Always ensure the demo admin exists
-  await pool.query('DELETE FROM users WHERE email=?', ['admin@demo.local']);
-  const hash = await bcrypt.hash('Admin@123', 10);
-  const [result] = await pool.query('INSERT INTO users (email, password_hash, role) VALUES (?,?,?)', ['admin@demo.local', hash, 'ADMIN']);
-  console.log('✓ Admin created: admin@demo.local / Admin@123 (ID:', result.insertId, ')');
+  // No auto-created demo admin; admins must be created manually via /api/auth/register
+  const [rows] = await pool.query('SELECT COUNT(*) as c FROM users');
+  console.log(`Users present: ${rows?.[0]?.c ?? 0}`);
 
   const menu = [
     ['Sushi Mix 10p', 'Assortiment de sushi', 1200, 420, 1],

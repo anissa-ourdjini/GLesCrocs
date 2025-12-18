@@ -17,6 +17,7 @@ async function request(path, options = {}) {
 export const api = {
   login: (email, password) => request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   register: (email, password) => request('/api/auth/register', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  authInfo: () => request('/api/auth/info'),
   getMenu: () => request('/api/menu'),
   createMenuItem: (item) => request('/api/menu', { method: 'POST', body: JSON.stringify(item) }),
   updateMenuItem: (id, item) => request(`/api/menu/${id}`, { method: 'PUT', body: JSON.stringify(item) }),
