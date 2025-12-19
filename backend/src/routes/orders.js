@@ -10,14 +10,16 @@ function io(req) {
 }
 
 router.get('/queue', async (req, res) => {
-  const [[{ current }]] = await pool.query("SELECT COALESCE(MAX(ticket_number),0) AS current FROM orders WHERE status='SERVED'");
-  const [queue] = await pool.query(
-    `SELECT ticket_number, status, estimated_wait_seconds
-     FROM orders
-     WHERE ticket_number IS NOT NULL AND status IN ('VALIDATED','PREPARING','READY') AND ticket_number > ?
-     ORDER BY ticket_number ASC LIMIT 50`, [current]
-  );
-  res.json({ currentServing: current, queue });
+    const [[{ current }]] = await pool.query("SELECT COALESCE(MAX(ticket_number),0) AS current FROM orders WHERE status='SERVED'");
+    // Inclure les commandes PENDING sans ticket_number
+    const [queue] = await pool.query(
+     `SELECT ticket_number, status, estimated_wait_seconds, id
+      FROM orders
+      WHERE (ticket_number IS NOT NULL AND status IN ('VALIDATED','PREPARING','READY') AND ticket_number > ?)
+        OR (status='PENDING' AND ticket_number IS NULL)
+      ORDER BY COALESCE(ticket_number, id) ASC LIMIT 50`, [current]
+    );
+    res.json({ currentServing: current, queue });
 });
 
 router.post('/', async (req, res, next) => {

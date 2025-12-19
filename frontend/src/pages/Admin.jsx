@@ -439,7 +439,7 @@ export default function Admin() {
           <div className="grid gap-4">
             {queue.queue.map(order => (
               <div
-                key={order.ticket_number}
+                key={order.ticket_number != null ? order.ticket_number : `order-${queue.queue.indexOf(order)}`}
                 className={`card transition-all duration-300 ${
                   order.status === 'READY'
                     ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-green-500'
@@ -531,7 +531,7 @@ export default function Admin() {
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {menu.map(item => (
-              <div key={item.id} className="card">
+              <div key={item.id != null ? item.id : `item-${menu.indexOf(item)}`} className="card">
                 <div className="flex items-start justify-between mb-3 gap-4">
                   <img src={item.image_url ? `${API_URL}${item.image_url}` : getMenuImage(item.name)} alt={item.name} className="w-24 h-20 object-cover rounded-md mr-2" onError={(e)=>{e.target.style.display='none'}} />
                   <div className="flex-1">

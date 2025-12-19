@@ -8,7 +8,16 @@ async function request(path, options = {}) {
   };
   const res = await fetch(`${API_URL}${path}`, { ...options, headers: { ...headers, ...options.headers } });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Request failed' }));
+    let err = { error: 'Request failed' };
+    try {
+      err = await res.json();
+    } catch {}
+    // Gestion du token invalide ou expiré
+    if (res.status === 401 || (err.error && err.error.toLowerCase().includes('token'))) {
+      localStorage.removeItem('admin_token');
+      // Optionnel : redirection ou rechargement
+      window.location.reload();
+    }
     throw new Error(err.error || 'Request failed');
   }
   return res.json();
