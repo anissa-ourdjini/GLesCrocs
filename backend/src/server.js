@@ -11,7 +11,6 @@ import authRouter from './routes/auth.js';
 import menuRouter from './routes/menu.js';
 import uploadsRouter from './routes/uploads.js';
 import ordersRouter from './routes/orders.js';
-import { estimateQueue } from './services/queueAI.js';
 
 
 const app = express();
@@ -69,18 +68,13 @@ async function emitQueue(io) {
   // Récupère la file d'attente et l'envoie à tous les clients
   const [[{ current }]] = await pool.query("SELECT COALESCE(MAX(ticket_number),0) AS current FROM orders WHERE status='SERVED'");
   const [queue] = await pool.query(
-    `SELECT o.ticket_number, o.status, o.estimated_wait_seconds, o.id,
-      COALESCE(SUM(oi.quantity * mi.avg_prep_seconds), 0) AS avg_prep_seconds
+    `SELECT o.ticket_number, o.status, o.id, o.customer_name
     FROM orders o
-    LEFT JOIN order_items oi ON oi.order_id = o.id
-    LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
     WHERE ((o.ticket_number IS NOT NULL AND o.status IN ('VALIDATED','PREPARING','READY') AND o.ticket_number > ?)
       OR (o.status='PENDING' AND o.ticket_number IS NULL))
-    GROUP BY o.id
     ORDER BY COALESCE(o.ticket_number, o.id) ASC LIMIT 50`, [current]
   );
-  const queueWithEstimation = estimateQueue(queue, current);
-  io.emit('queue_update', { currentServing: current, queue: queueWithEstimation });
+  io.emit('queue_update', { currentServing: current, queue });
 }
 
 io.on('connection', (socket) => {

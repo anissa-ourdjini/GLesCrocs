@@ -1,8 +1,6 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { requireAdmin } from '../middleware/auth.js';
-import { estimateWaitSecondsForOrder } from '../services/estimator.js';
-import { estimateQueue } from '../services/queueAI.js';
 
 const router = Router();
 // Annulation d'une commande (client)
@@ -25,21 +23,14 @@ function io(req) {
 
 router.get('/queue', async (req, res) => {
     const [[{ current }]] = await pool.query("SELECT COALESCE(MAX(ticket_number),0) AS current FROM orders WHERE status='SERVED'");
-    // On récupère les commandes et on calcule dynamiquement avg_prep_seconds pour chaque commande
     const [queue] = await pool.query(
-      `SELECT o.ticket_number, o.status, o.estimated_wait_seconds, o.id, o.client_uid, o.order_number,
-        COALESCE(SUM(oi.quantity * mi.avg_prep_seconds), 0) AS avg_prep_seconds
+      `SELECT o.ticket_number, o.status, o.id, o.client_uid, o.order_number, o.customer_name
       FROM orders o
-      LEFT JOIN order_items oi ON oi.order_id = o.id
-      LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
       WHERE ((o.ticket_number IS NOT NULL AND o.status IN ('VALIDATED','PREPARING','READY') AND o.ticket_number > ?)
         OR (o.status='PENDING' AND o.ticket_number IS NULL))
-      GROUP BY o.id
       ORDER BY COALESCE(o.ticket_number, o.id) ASC LIMIT 50`, [current]
     );
-    // Ajout de l'estimation IA
-    const queueWithEstimation = estimateQueue(queue, current);
-    res.json({ currentServing: current, queue: queueWithEstimation });
+    res.json({ currentServing: current, queue });
 });
 
 router.post('/', async (req, res, next) => {
@@ -61,11 +52,8 @@ router.post('/', async (req, res, next) => {
     }
     await conn.commit();
 
-    const estimate = await estimateWaitSecondsForOrder(orderId);
-    await pool.query('UPDATE orders SET estimated_wait_seconds=? WHERE id=?', [estimate, orderId]);
-
-    io(req).emit('order_update', { orderId, status: 'PENDING', estimated_wait_seconds: estimate });
-    res.status(201).json({ id: orderId, order_number, estimated_wait_seconds: estimate });
+    io(req).emit('order_update', { orderId, status: 'PENDING' });
+    res.status(201).json({ id: orderId, order_number });
   } catch (e) {
     await conn.rollback();
     next(e);
@@ -78,10 +66,8 @@ router.post('/:id/validate', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   const [[{ nextTicket }]] = await pool.query('SELECT COALESCE(MAX(ticket_number),0)+1 AS nextTicket FROM orders');
   await pool.query('UPDATE orders SET status="VALIDATED", ticket_number=?, validated_at=NOW() WHERE id=?', [nextTicket, id]);
-  const estimate = await estimateWaitSecondsForOrder(id);
-  await pool.query('UPDATE orders SET estimated_wait_seconds=? WHERE id=?', [estimate, id]);
   io(req).emit('queue_update');
-  res.json({ ok: true, ticket_number: nextTicket, estimated_wait_seconds: estimate });
+  res.json({ ok: true, ticket_number: nextTicket });
 });
 
 router.post('/:id/ready', requireAdmin, async (req, res) => {

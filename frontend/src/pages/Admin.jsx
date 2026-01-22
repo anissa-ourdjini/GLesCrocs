@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 import { api, API_URL } from '../services/api';
 import { connectSocket } from '../services/socket';
 import { LogOut, Check, Clock, AlertCircle } from 'lucide-react';
@@ -92,7 +91,6 @@ function MenuForm({ data, setData, onSubmit, submitLabel, onCancel, notify }) {
 }
 
 export default function Admin() {
-  const { t } = useTranslation();
   const [authed, setAuthed] = useState(!!localStorage.getItem('admin_token'));
   const [hasAdmin, setHasAdmin] = useState(true);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -136,7 +134,7 @@ export default function Admin() {
       setEmail('');
       setPassword('');
     } catch (e) {
-      setNotification(t('error.loginFailed'));
+      setNotification('Connexion échouée');
       setTimeout(() => setNotification(''), 3000);
     }
   }
@@ -235,9 +233,9 @@ export default function Admin() {
           <div className="text-center mb-8">
             <img src="/assets/logo.png" alt="GLesCrocs" className="mx-auto w-20 h-20 mb-4 rounded-md bg-white/90 p-2" onError={(e)=>{e.target.style.display='none'}} />
             <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-600 to-accent-500 bg-clip-text text-transparent">
-              {t('admin.login')}
+              Connexion Admin
             </h1>
-            <p className="text-sm text-slate-500 mt-2">{t('admin.title')}</p>
+            <p className="text-sm text-slate-500 mt-2">Administration</p>
           </div>
 
           {notification && (
@@ -248,7 +246,7 @@ export default function Admin() {
 
           <div className="space-y-4 mb-6">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">{t('admin.email')}</label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
               <input
                 type="email"
                 value={email}
@@ -259,7 +257,7 @@ export default function Admin() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">{t('admin.password')}</label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Mot de passe</label>
               <input
                 type="password"
                 value={password}
@@ -273,7 +271,7 @@ export default function Admin() {
 
           <div className="grid grid-cols-1 gap-3 mb-2">
             <button onClick={login} className="btn-primary w-full">
-              {t('admin.signIn')}
+              Se connecter
             </button>
           </div>
         </div>
@@ -343,7 +341,7 @@ export default function Admin() {
           <h1 className="text-4xl font-bold text-slate-900 flex items-center gap-3">
             <img src="/assets/logo.png" alt="GLesCrocs" className="w-12 h-12 rounded-md" onError={(e)=>{e.target.style.display='none'}} />
             <span className="text-2xl font-extrabold">GLesCrocs</span>
-            <span className="text-base text-slate-600 ml-2">{t('admin.title')}</span>
+            <span className="text-base text-slate-600 ml-2">Admin</span>
           </h1>
           <p className="text-slate-600 mt-2">Gérez votre file d'attente et votre menu</p>
         </div>
@@ -352,7 +350,7 @@ export default function Admin() {
             ➕ Nouvel admin
           </button>
           <button onClick={logout} className="btn-secondary flex items-center gap-2">
-            <LogOut className="w-5 h-5" /> {t('admin.logout')}
+            <LogOut className="w-5 h-5" /> Déconnexion
           </button>
         </div>
       </div>
@@ -408,9 +406,9 @@ export default function Admin() {
       {/* Current Serving Display */}
       <div className="card bg-gradient-to-r from-primary-600 to-primary-800 text-white border-none">
         <div className="text-center">
-          <p className="text-primary-100 mb-2">{t('client.currentNumber')}</p>
+          <p className="text-primary-100 mb-2">Numéro en cours</p>
           <div className="text-7xl font-bold animate-bounce-in mb-2">{queue.currentServing}</div>
-          <p className="text-primary-100">🎫 {queue.queue.length} {t('client.queue')}</p>
+          <p className="text-primary-100">🎫 {queue.queue.length} commandes</p>
         </div>
       </div>
 
@@ -427,7 +425,7 @@ export default function Admin() {
       {/* Queue Management */}
       <div>
         <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-          <span className="text-3xl">📋</span> {t('admin.queue')} ({queue.queue.length})
+          <span className="text-3xl">📋</span> File d'attente ({queue.queue.length})
         </h2>
 
         {queue.queue.length === 0 ? (
@@ -436,79 +434,117 @@ export default function Admin() {
             <p className="text-slate-600 text-lg">Aucune commande en attente</p>
           </div>
         ) : (
-          <div className="grid gap-4">
-            {queue.queue.map(order => (
-              <div
-                key={order.ticket_number != null ? order.ticket_number : `order-${queue.queue.indexOf(order)}`}
-                className={`card transition-all duration-300 ${
-                  order.status === 'READY'
-                    ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-green-500'
-                    : order.status === 'PENDING'
-                    ? 'bg-gradient-to-r from-yellow-50 to-orange-50 border-l-orange-500'
-                    : 'bg-gradient-to-r from-blue-50 to-cyan-50 border-l-blue-500'
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-4">
-                      <div className="text-4xl font-bold text-primary-600">#{order.ticket_number}</div>
-                      {order.order_number && (
-                        <span className="ml-2 text-xs text-slate-500">Commande client n°{order.order_number}</span>
-                      )}
-                      <div>
-                        <span
-                          className={`badge ${
-                            order.status === 'READY'
-                              ? 'badge-success'
-                              : order.status === 'VALIDATED'
-                              ? 'badge-warning'
-                              : 'badge-info'
-                          }`}
-                        >
-                          {order.status === 'READY' && '✓ '}
-                          {order.status === 'READY' ? t('status.ready') : order.status === 'VALIDATED' ? t('status.validated') : t('status.pending')}
-                        </span>
+          <div className="grid gap-6">
+            {(() => {
+              // Group orders by order_number
+              const groupedOrders = queue.queue.reduce((acc, order) => {
+                const key = order.order_number || order.id;
+                if (!acc[key]) acc[key] = [];
+                acc[key].push(order);
+                return acc;
+              }, {});
+
+              // Get unique order_numbers in order
+              const orderedKeys = Object.keys(groupedOrders).sort((a, b) => {
+                const aNum = queue.queue.find(o => (o.order_number || o.id) == a)?.order_number;
+                const bNum = queue.queue.find(o => (o.order_number || o.id) == b)?.order_number;
+                return (aNum || 0) - (bNum || 0);
+              });
+
+              return orderedKeys.map((orderKey, index) => {
+                const orders = groupedOrders[orderKey];
+                const orderNumber = index + 1;
+                const firstOrder = orders[0];
+                const allReady = orders.every(o => o.status === 'READY');
+                const allServed = orders.every(o => o.status === 'SERVED');
+                const anyPending = orders.some(o => o.status === 'PENDING');
+
+                return (
+                  <div
+                    key={orderKey}
+                    className={`card transition-all duration-300 ${
+                      allReady
+                        ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-l-green-500'
+                        : anyPending
+                        ? 'bg-gradient-to-r from-yellow-50 to-orange-50 border-l-4 border-l-orange-500'
+                        : 'bg-gradient-to-r from-blue-50 to-cyan-50 border-l-4 border-l-blue-500'
+                    }`}
+                  >
+                    {/* Commande Header */}
+                    <div className="flex items-start justify-between mb-4 pb-4 border-b border-slate-200">
+                      <div className="flex-1">
+                        <h3 className="text-2xl font-bold text-primary-600">Commande {orderNumber}</h3>
+                        {firstOrder.order_number && (
+                          <p className="text-xs text-slate-500 mt-1">Numéro client: {firstOrder.order_number}</p>
+                        )}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 mt-3 text-slate-700">
-                      <Clock className="w-4 h-4" />
-                      <span className="text-sm">
-                        {order.estimated_wait_seconds !== undefined ? Math.round(order.estimated_wait_seconds / 60) : '?'} {t('time.minutes')}
-                      </span>
+                    {/* Items in order */}
+                    <div className="space-y-3 mb-4">
+                      {orders.map((order, idx) => (
+                        <div
+                          key={order.id || `order-${idx}`}
+                          className="flex items-start justify-between p-3 bg-white rounded-lg"
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-900">#{order.ticket_number || `Ticket ${idx + 1}`}</span>
+                              <span
+                                className={`badge ${
+                                  order.status === 'READY'
+                                    ? 'badge-success'
+                                    : order.status === 'VALIDATED'
+                                    ? 'badge-warning'
+                                    : 'badge-info'
+                                }`}
+                              >
+                                {order.status === 'READY' && '✓ '}
+                                {order.status === 'READY' ? 'Prêt' : order.status === 'VALIDATED' ? 'Validée' : 'En attente'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-2 text-slate-700">
+                              <Clock className="w-4 h-4" />
+                              <span className="text-sm">
+                                {order.estimated_wait_seconds !== undefined ? Math.round(order.estimated_wait_seconds / 60) : '?'} min
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex gap-2 ml-4">
+                            {order.status === 'PENDING' && (
+                              <button
+                                onClick={() => handleValidate(order.ticket_number)}
+                                className="btn-small bg-primary-600 text-white hover:bg-primary-700"
+                              >
+                                ✓ Valider
+                              </button>
+                            )}
+                            {order.status === 'VALIDATED' && (
+                              <button
+                                onClick={() => handleReady(order.ticket_number)}
+                                className="btn-small bg-orange-500 text-white hover:bg-orange-600"
+                              >
+                                🔔 Prêt
+                              </button>
+                            )}
+                            {order.status === 'READY' && (
+                              <button
+                                onClick={() => handleServed(order.ticket_number)}
+                                className="btn-small bg-green-600 text-white hover:bg-green-700"
+                              >
+                                ✓ Servie
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex gap-2">
-                    {order.status === 'PENDING' && (
-                      <button
-                        onClick={() => handleValidate(order.ticket_number)}
-                        className="btn-small bg-primary-600 text-white hover:bg-primary-700"
-                      >
-                        ✓ {t('admin.validateOrder')}
-                      </button>
-                    )}
-                    {order.status === 'VALIDATED' && (
-                      <button
-                        onClick={() => handleReady(order.ticket_number)}
-                        className="btn-small bg-orange-500 text-white hover:bg-orange-600"
-                      >
-                        🔔 {t('admin.markReady')}
-                      </button>
-                    )}
-                    {order.status === 'READY' && (
-                      <button
-                        onClick={() => handleServed(order.ticket_number)}
-                        className="btn-small bg-green-600 text-white hover:bg-green-700"
-                      >
-                        ✓ {t('admin.markServed')}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
+                );
+              });
+            })()}
           </div>
         )}
       </div>
@@ -516,7 +552,7 @@ export default function Admin() {
       {/* Menu Management */}
       <div>
         <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-          <span className="text-3xl">🍜</span> {t('admin.menu')} ({menu.length})
+          <span className="text-3xl">🍜</span> Menu ({menu.length})
         </h2>
 
         {/* Add new menu item */}
@@ -541,12 +577,12 @@ export default function Admin() {
                     <p className="text-sm text-slate-600 mb-3 line-clamp-2">{item.description}</p>
                     <div className="flex items-center gap-2 text-xs text-slate-500">
                       <Clock className="w-4 h-4" />
-                      {Math.round(item.avg_prep_seconds / 60)} {t('time.minutes')}
+                      {Math.round(item.avg_prep_seconds / 60)} min
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-3">
                     <span className="badge-success whitespace-nowrap ml-2">{(item.price_cents / 100).toFixed(2)}€</span>
-                    <button onClick={() => openEditModal(item)} className="btn-small bg-slate-200 text-slate-700 hover:bg-slate-300">✏️ {t('admin.edit')}</button>
+                    <button onClick={() => openEditModal(item)} className="btn-small bg-slate-200 text-slate-700 hover:bg-slate-300">✏️ Éditer</button>
                   </div>
                 </div>
               </div>
