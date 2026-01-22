@@ -18,7 +18,10 @@ export default function Client() {
     loadMenu();
     loadQueue();
     const socket = connectSocket();
-    socket.on('queue_update', loadQueue);
+    socket.on('queue_update', () => {
+      loadQueue();
+      loadMenu();
+    });
     return () => socket.off('queue_update');
   }, []);
 
@@ -70,7 +73,7 @@ export default function Client() {
       {/* Hero Section */}
       <div className="grid md:grid-cols-3 gap-6">
         <div className="md:col-span-2 glass rounded-2xl overflow-hidden h-72 md:h-96 relative group">
-          <img src="/assets/menu/sushi.svg" alt="hero" className="absolute inset-0 w-full h-full object-cover" />
+          <img src="/assets/logo.png" alt="GLesCrocs" className="absolute inset-0 w-full h-full object-contain bg-white" />
           <div className="absolute inset-0 bg-black/35 group-hover:bg-black/25 transition-all duration-300" />
           <div className="absolute inset-0 flex items-end p-6">
             <div className="glass rounded-xl p-6 w-full flex items-center gap-4">
@@ -120,6 +123,20 @@ export default function Client() {
                   <p className="text-sm text-slate-600 flex items-center gap-2 mt-1">
                     <Clock className="w-4 h-4" /> {Math.round(myOrder.estimated_wait_seconds / 60)} {t('time.minutes')}
                   </p>
+                )}
+                {/* Bouton annuler commande */}
+                {myOrder.status !== 'READY' && myOrder.status !== 'SERVED' && myOrder.status !== 'CANCELLED' && (
+                  <button
+                    className="btn-danger mt-2 px-4 py-2 rounded"
+                    onClick={async () => {
+                      try {
+                        await fetch(`${API_URL}/api/orders/${myOrder.id}/cancel`, { method: 'POST' });
+                        setMyTicket(null);
+                      } catch (e) {
+                        alert('Erreur lors de l\'annulation');
+                      }
+                    }}
+                  >Annuler la commande</button>
                 )}
               </div>
             </div>
@@ -218,6 +235,24 @@ export default function Client() {
             className="input-field mb-2 text-center"
           />
           <p className="text-xs text-slate-500">{t('client.orderPlaced')}</p>
+        </div>
+      )}
+
+      {/* Mes commandes par client avec numéro */}
+      {queue.queue && queue.queue.length > 0 && (
+        <div className="card bg-gradient-to-r from-blue-50 to-cyan-50 border-l-4 border-blue-500 mt-4">
+          <h3 className="font-bold mb-2">Mes commandes (numérotées)</h3>
+          <ul className="space-y-2">
+            {queue.queue.filter(q => q.client_uid && localStorage.getItem('client_uid') && q.client_uid === localStorage.getItem('client_uid')).map(order => (
+              <li key={order.id} className="flex items-center gap-4">
+                <span className="font-bold">Commande {order.order_number}</span>
+                <span className="text-xs text-slate-600">{order.status}</span>
+                {order.estimated_wait_seconds && (
+                  <span className="text-xs text-slate-500 ml-2">⏳ {Math.round(order.estimated_wait_seconds / 60)} min</span>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

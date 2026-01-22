@@ -2,8 +2,22 @@ import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { estimateWaitSecondsForOrder } from '../services/estimator.js';
+import { estimateQueue } from '../services/queueAI.js';
 
 const router = Router();
+// Annulation d'une commande (client)
+router.post('/:id/cancel', async (req, res) => {
+  const id = Number(req.params.id);
+  // On ne peut annuler que si la commande n'est pas déjà servie ou annulée
+  const [[order]] = await pool.query('SELECT status FROM orders WHERE id=?', [id]);
+  if (!order) return res.status(404).json({ error: 'Commande introuvable' });
+  if (order.status === 'SERVED' || order.status === 'CANCELLED') {
+    return res.status(400).json({ error: 'Commande déjà servie ou annulée' });
+  }
+  await pool.query('UPDATE orders SET status="CANCELLED" WHERE id=?', [id]);
+  req.app.get('io').emit('queue_update');
+  res.json({ ok: true });
+});
 
 function io(req) {
   return req.app.get('io');
@@ -11,24 +25,36 @@ function io(req) {
 
 router.get('/queue', async (req, res) => {
     const [[{ current }]] = await pool.query("SELECT COALESCE(MAX(ticket_number),0) AS current FROM orders WHERE status='SERVED'");
-    // Inclure les commandes PENDING sans ticket_number
+    // On récupère les commandes et on calcule dynamiquement avg_prep_seconds pour chaque commande
     const [queue] = await pool.query(
-     `SELECT ticket_number, status, estimated_wait_seconds, id
-      FROM orders
-      WHERE (ticket_number IS NOT NULL AND status IN ('VALIDATED','PREPARING','READY') AND ticket_number > ?)
-        OR (status='PENDING' AND ticket_number IS NULL)
-      ORDER BY COALESCE(ticket_number, id) ASC LIMIT 50`, [current]
+      `SELECT o.ticket_number, o.status, o.estimated_wait_seconds, o.id, o.client_uid, o.order_number,
+        COALESCE(SUM(oi.quantity * mi.avg_prep_seconds), 0) AS avg_prep_seconds
+      FROM orders o
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
+      WHERE ((o.ticket_number IS NOT NULL AND o.status IN ('VALIDATED','PREPARING','READY') AND o.ticket_number > ?)
+        OR (o.status='PENDING' AND o.ticket_number IS NULL))
+      GROUP BY o.id
+      ORDER BY COALESCE(o.ticket_number, o.id) ASC LIMIT 50`, [current]
     );
-    res.json({ currentServing: current, queue });
+    // Ajout de l'estimation IA
+    const queueWithEstimation = estimateQueue(queue, current);
+    res.json({ currentServing: current, queue: queueWithEstimation });
 });
 
 router.post('/', async (req, res, next) => {
-  const { customer_name, items } = req.body || {};
+  const { customer_name, items, client_uid } = req.body || {};
   if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'items required' });
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const [r] = await conn.query('INSERT INTO orders (customer_name, status) VALUES (?, "PENDING")', [customer_name || null]);
+    // Calcul du prochain numéro de commande pour ce client
+    let order_number = 1;
+    if (client_uid) {
+      const [[row]] = await conn.query('SELECT COALESCE(MAX(order_number),0)+1 AS next_order FROM orders WHERE client_uid=?', [client_uid]);
+      order_number = row.next_order;
+    }
+    const [r] = await conn.query('INSERT INTO orders (customer_name, client_uid, order_number, status) VALUES (?, ?, ?, "PENDING")', [customer_name || null, client_uid || null, order_number]);
     const orderId = r.insertId;
     for (const it of items) {
       await conn.query('INSERT INTO order_items (order_id, menu_item_id, quantity) VALUES (?,?,?)', [orderId, Number(it.menu_item_id), Number(it.quantity || 1)]);
@@ -39,7 +65,7 @@ router.post('/', async (req, res, next) => {
     await pool.query('UPDATE orders SET estimated_wait_seconds=? WHERE id=?', [estimate, orderId]);
 
     io(req).emit('order_update', { orderId, status: 'PENDING', estimated_wait_seconds: estimate });
-    res.status(201).json({ id: orderId, estimated_wait_seconds: estimate });
+    res.status(201).json({ id: orderId, order_number, estimated_wait_seconds: estimate });
   } catch (e) {
     await conn.rollback();
     next(e);

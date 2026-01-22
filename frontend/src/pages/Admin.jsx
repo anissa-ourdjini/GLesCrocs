@@ -452,6 +452,9 @@ export default function Admin() {
                   <div className="flex-1">
                     <div className="flex items-center gap-4">
                       <div className="text-4xl font-bold text-primary-600">#{order.ticket_number}</div>
+                      {order.order_number && (
+                        <span className="ml-2 text-xs text-slate-500">Commande client n°{order.order_number}</span>
+                      )}
                       <div>
                         <span
                           className={`badge ${
@@ -468,14 +471,12 @@ export default function Admin() {
                       </div>
                     </div>
 
-                    {order.estimated_wait_seconds && (
-                      <div className="flex items-center gap-2 mt-3 text-slate-700">
-                        <Clock className="w-4 h-4" />
-                        <span className="text-sm">
-                          {Math.round(order.estimated_wait_seconds / 60)} {t('time.minutes')}
-                        </span>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 mt-3 text-slate-700">
+                      <Clock className="w-4 h-4" />
+                      <span className="text-sm">
+                        {order.estimated_wait_seconds !== undefined ? Math.round(order.estimated_wait_seconds / 60) : '?'} {t('time.minutes')}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Action Buttons */}

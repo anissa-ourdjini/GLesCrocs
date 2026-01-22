@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS orders (
   ticket_number INT NULL,
   status ENUM('PENDING','VALIDATED','PREPARING','READY','SERVED','CANCELLED') NOT NULL DEFAULT 'PENDING',
   customer_name VARCHAR(255),
+  client_uid VARCHAR(64) DEFAULT NULL,
+  order_number INT DEFAULT NULL,
   estimated_wait_seconds INT DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   validated_at TIMESTAMP NULL,
