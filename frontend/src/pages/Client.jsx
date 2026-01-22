@@ -125,10 +125,31 @@ export default function Client() {
           <img src="/assets/logo.png" alt="GLesCrocs" className="absolute inset-0 w-full h-full object-contain bg-white" />
         </div>
         <div className="space-y-4">
-          <div className="card h-full flex flex-col justify-center text-center bg-gradient-to-br from-green-50 to-emerald-50">
-            <div className="text-5xl font-bold text-primary-600">{queue.currentServing}</div>
-            <p className="text-sm text-slate-600 mt-2">Numéro en cours</p>
-            <p className="text-xs text-slate-500 mt-1">{queue.queue.length} commandes</p>
+          <div className="card h-full bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 overflow-hidden flex flex-col">
+            <div className="text-center pb-3 border-b border-green-200">
+              <div className="text-4xl font-bold text-primary-600">{queue.currentServing}</div>
+              <p className="text-xs text-slate-600 mt-1">Numéro en cours</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              <p className="text-xs font-bold text-slate-700 mb-2">📋 File d'attente ({queue.queue.length})</p>
+              {queue.queue.length === 0 ? (
+                <p className="text-xs text-slate-500 text-center py-4">Aucune commande</p>
+              ) : (
+                queue.queue.slice(0, 8).map((order, idx) => (
+                  <div key={order.id} className={`text-xs p-2 rounded border ${ 
+                    idx === 0 ? 'bg-yellow-100 border-yellow-300 font-bold' :
+                    order.status === 'READY' ? 'bg-green-100 border-green-300' :
+                    order.status === 'PREPARING' ? 'bg-orange-100 border-orange-300' :
+                    'bg-blue-100 border-blue-300'
+                  }`}>
+                    <span className="font-semibold">#{order.ticket_number || order.id}</span>
+                    {order.status === 'READY' && ' ✅ Prêt!'}
+                    {order.status === 'PREPARING' && ' 👨‍🍳 Prep'}
+                    {order.status === 'VALIDATED' && ' ⏳ Validé'}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -220,7 +241,15 @@ export default function Client() {
             {menu.map(item => (
               <div key={item.id} className="card group">
                 <div className="h-48 rounded-lg mb-4 overflow-hidden bg-slate-100 flex items-center justify-center">
-                  <img src={item.image_url ? `${API_URL}${item.image_url}` : getMenuImage(item.name)} alt={item.name} className="w-full h-full object-cover" />
+                  <img 
+                    src={item.image_url ? `${API_URL}${item.image_url}` : getMenuImage(item.name)} 
+                    alt={item.name} 
+                    className="w-full h-full object-cover" 
+                    onError={(e) => {
+                      e.target.src = getMenuImage(item.name);
+                      e.target.onerror = null;
+                    }}
+                  />
                 </div>
                 <h3 className="font-bold text-lg">{item.name}</h3>
                 <p className="text-sm text-slate-600 mt-2 line-clamp-2">{item.description}</p>

@@ -24,14 +24,17 @@ async function emitClientOrders(io, client_uid) {
 // Annulation d'une commande (client)
 router.post('/:id/cancel', async (req, res) => {
   const id = Number(req.params.id);
-  // On ne peut annuler que si la commande n'est pas déjà servie ou annulée
-  const [[order]] = await pool.query('SELECT status FROM orders WHERE id=?', [id]);
+  const [[order]] = await pool.query('SELECT status, client_uid FROM orders WHERE id=?', [id]);
   if (!order) return res.status(404).json({ error: 'Commande introuvable' });
   if (order.status === 'SERVED' || order.status === 'CANCELLED') {
     return res.status(400).json({ error: 'Commande déjà servie ou annulée' });
   }
   await pool.query('UPDATE orders SET status="CANCELLED" WHERE id=?', [id]);
-  req.app.get('io').emit('queue_update');
+  io(req).emit('queue_update');
+  // Notifie le client spécifique
+  if (order?.client_uid) {
+    await emitClientOrders(io(req), order.client_uid);
+  }
   res.json({ ok: true });
 });
 
@@ -93,9 +96,9 @@ router.post('/:id/validate', requireAdmin, async (req, res) => {
 });
 
 router.post('/:id/ready', requireAdmin, async (req, res) => {
-  const ticketNumber = Number(req.params.id);
-  const [[order]] = await pool.query('SELECT client_uid FROM orders WHERE ticket_number=?', [ticketNumber]);
-  await pool.query('UPDATE orders SET status="READY", ready_at=NOW() WHERE ticket_number=?', [ticketNumber]);
+  const id = Number(req.params.id);
+  const [[order]] = await pool.query('SELECT client_uid FROM orders WHERE id=?', [id]);
+  await pool.query('UPDATE orders SET status="READY", ready_at=NOW() WHERE id=?', [id]);
   io(req).emit('queue_update');
   if (order?.client_uid) {
     await emitClientOrders(io(req), order.client_uid);
@@ -104,9 +107,9 @@ router.post('/:id/ready', requireAdmin, async (req, res) => {
 });
 
 router.post('/:id/served', requireAdmin, async (req, res) => {
-  const ticketNumber = Number(req.params.id);
-  const [[order]] = await pool.query('SELECT client_uid FROM orders WHERE ticket_number=?', [ticketNumber]);
-  await pool.query('UPDATE orders SET status="SERVED", served_at=NOW() WHERE ticket_number=?', [ticketNumber]);
+  const id = Number(req.params.id);
+  const [[order]] = await pool.query('SELECT client_uid FROM orders WHERE id=?', [id]);
+  await pool.query('UPDATE orders SET status="SERVED", served_at=NOW() WHERE id=?', [id]);
   io(req).emit('queue_update');
   if (order?.client_uid) {
     await emitClientOrders(io(req), order.client_uid);

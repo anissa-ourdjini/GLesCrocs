@@ -180,6 +180,17 @@ export default function Admin() {
     showNotification('Commande servie ✓');
   }
 
+  async function handleDelete(id) {
+    if (!confirm('Supprimer cette commande ?')) return;
+    try {
+      await api.cancelOrder(id);
+      loadQueue();
+      showNotification('Commande supprimée ✓');
+    } catch (e) {
+      showNotification('Erreur suppression');
+    }
+  }
+
   function showNotification(msg) {
     setNotification(msg);
     setTimeout(() => setNotification(''), 2000);
@@ -514,28 +525,52 @@ export default function Admin() {
                           {/* Action Buttons */}
                           <div className="flex gap-2 ml-4">
                             {order.status === 'PENDING' && (
-                              <button
-                                onClick={() => handleValidate(order.ticket_number)}
-                                className="btn-small bg-primary-600 text-white hover:bg-primary-700"
-                              >
-                                ✓ Valider
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => handleValidate(order.id)}
+                                  className="btn-small bg-primary-600 text-white hover:bg-primary-700"
+                                >
+                                  ✓ Valider
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(order.id)}
+                                  className="btn-small bg-red-600 text-white hover:bg-red-700"
+                                >
+                                  🗑️ Supprimer
+                                </button>
+                              </>
                             )}
                             {order.status === 'VALIDATED' && (
-                              <button
-                                onClick={() => handleReady(order.ticket_number)}
-                                className="btn-small bg-orange-500 text-white hover:bg-orange-600"
-                              >
-                                🔔 Prêt
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => handleReady(order.id)}
+                                  className="btn-small bg-orange-500 text-white hover:bg-orange-600"
+                                >
+                                  🔔 Prêt
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(order.id)}
+                                  className="btn-small bg-red-600 text-white hover:bg-red-700"
+                                >
+                                  🗑️ Supprimer
+                                </button>
+                              </>
                             )}
                             {order.status === 'READY' && (
-                              <button
-                                onClick={() => handleServed(order.ticket_number)}
-                                className="btn-small bg-green-600 text-white hover:bg-green-700"
-                              >
-                                ✓ Servie
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => handleServed(order.id)}
+                                  className="btn-small bg-green-600 text-white hover:bg-green-700"
+                                >
+                                  ✓ Servie
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(order.id)}
+                                  className="btn-small bg-red-600 text-white hover:bg-red-700"
+                                >
+                                  🗑️ Supprimer
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
@@ -570,7 +605,7 @@ export default function Admin() {
             {menu.map(item => (
               <div key={item.id != null ? item.id : `item-${menu.indexOf(item)}`} className="card">
                 <div className="flex items-start justify-between mb-3 gap-4">
-                  <img src={item.image_url ? `${API_URL}${item.image_url}` : getMenuImage(item.name)} alt={item.name} className="w-24 h-20 object-cover rounded-md mr-2" onError={(e)=>{e.target.style.display='none'}} />
+                  <img src={item.image_url ? `${API_URL}${item.image_url}` : getMenuImage(item.name)} alt={item.name} className="w-24 h-20 object-cover rounded-md mr-2" onError={(e)=>{ e.target.src = getMenuImage(item.name); e.target.onerror = null; }} />
                   <div className="flex-1">
                     <h3 className="font-bold text-lg text-slate-900">{item.name}</h3>
                     <p className="text-xs text-slate-500 mt-1">ID: {item.id}</p>

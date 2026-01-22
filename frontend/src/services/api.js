@@ -36,6 +36,7 @@ export const api = {
   validateOrder: (id) => request(`/api/orders/${id}/validate`, { method: 'POST' }),
   markReady: (id) => request(`/api/orders/${id}/ready`, { method: 'POST' }),
   markServed: (id) => request(`/api/orders/${id}/served`, { method: 'POST' }),
+  cancelOrder: (id) => request(`/api/orders/${id}/cancel`, { method: 'POST' }),
   uploadImage: async (file) => {
     const token = localStorage.getItem('admin_token');
     const form = new FormData();
