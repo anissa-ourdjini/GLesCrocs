@@ -77,9 +77,33 @@ async function emitQueue(io) {
   io.emit('queue_update', { currentServing: current, queue });
 }
 
+// Émet les commandes d'un client spécifique dans sa room
+async function emitClientOrders(io, client_uid) {
+  if (!client_uid) return;
+  const [orders] = await pool.query(
+    `SELECT o.id, o.ticket_number, o.status, o.order_number, o.customer_name, o.created_at
+    FROM orders o
+    WHERE o.client_uid = ? AND o.status != 'CANCELLED'
+    ORDER BY o.created_at DESC LIMIT 20`,
+    [client_uid]
+  );
+  io.to(`client_${client_uid}`).emit('client_orders_update', { orders });
+}
+
 io.on('connection', (socket) => {
   console.log('socket connected', socket.id);
   emitQueue(io); // Envoie la file d'attente à chaque nouveau client
+  
+  // Permet au client de rejoindre sa room personnelle
+  socket.on('join_client_room', (client_uid) => {
+    if (client_uid) {
+      socket.join(`client_${client_uid}`);
+      console.log(`Client ${client_uid} joined room client_${client_uid}`);
+      // Envoie immédiatement ses commandes
+      emitClientOrders(io, client_uid);
+    }
+  });
+  
   socket.on('disconnect', () => console.log('socket disconnected', socket.id));
 });
 

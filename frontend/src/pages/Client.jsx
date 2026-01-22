@@ -11,25 +11,78 @@ export default function Client() {
   const [myTicket, setMyTicket] = useState(null);
   const [showNotification, setShowNotification] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [clientUid, setClientUid] = useState('');
+  const [myOrders, setMyOrders] = useState([]);
+
+  // Génère ou récupère le client_uid depuis localStorage
+  useEffect(() => {
+    let uid = localStorage.getItem('client_uid');
+    if (!uid) {
+      uid = 'client_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('client_uid', uid);
+    }
+    setClientUid(uid);
+    
+    // Charge le menu depuis le cache localStorage
+    const cachedMenu = localStorage.getItem('menu_cache');
+    if (cachedMenu) {
+      try {
+        const parsed = JSON.parse(cachedMenu);
+        setMenu(Array.isArray(parsed) ? parsed : []);
+      } catch (e) {
+        console.error('Erreur parsing menu cache:', e);
+      }
+    }
+  }, []);
 
   useEffect(() => {
+    if (!clientUid) return;
+    
     loadMenu();
     loadQueue();
     const socket = connectSocket();
+    
+    // Rejoint la room du client
+    socket.emit('join_client_room', clientUid);
+    
     socket.on('queue_update', () => {
       loadQueue();
       loadMenu();
     });
-    return () => socket.off('queue_update');
-  }, []);
+    
+    socket.on('client_orders_update', (data) => {
+      if (data?.orders) {
+        setMyOrders(data.orders);
+      }
+    });
+    
+    return () => {
+      socket.off('queue_update');
+      socket.off('client_orders_update');
+    };
+  }, [clientUid]);
 
   async function loadMenu() {
     try {
       const data = await api.getMenu();
-      setMenu(Array.isArray(data) ? data : []);
+      const menuData = Array.isArray(data) ? data : [];
+      setMenu(menuData);
+      // Sauvegarde le menu en cache
+      localStorage.setItem('menu_cache', JSON.stringify(menuData));
     } catch (e) {
       console.error('Erreur chargement menu:', e);
-      setMenu([]);
+      // En cas d'erreur, garde le menu en cache si disponible
+      const cachedMenu = localStorage.getItem('menu_cache');
+      if (cachedMenu) {
+        try {
+          const parsed = JSON.parse(cachedMenu);
+          setMenu(Array.isArray(parsed) ? parsed : []);
+        } catch (err) {
+          setMenu([]);
+        }
+      } else {
+        setMenu([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -52,7 +105,7 @@ export default function Client() {
   async function submitOrder() {
     if (cart.length === 0) return;
     try {
-      const order = await api.createOrder({ items: cart, customer_name: 'Client' });
+      const order = await api.createOrder({ items: cart, customer_name: 'Client', client_uid: clientUid });
       setMyTicket(order.id);
       setCart([]);
       setShowNotification(true);
@@ -88,6 +141,43 @@ export default function Client() {
               <h3 className="font-bold text-green-700">Commande créée!</h3>
               <p className="text-sm text-green-600">Numéro: <strong>{myTicket}</strong></p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {myOrders.length > 0 && (
+        <div className="card bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500">
+          <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+            <span className="text-2xl">📝</span> Mes commandes
+          </h3>
+          <div className="space-y-3">
+            {myOrders.map(order => (
+              <div key={order.id} className={`p-4 rounded-lg border-2 ${
+                order.status === 'READY' ? 'bg-green-50 border-green-300' :
+                order.status === 'PREPARING' ? 'bg-yellow-50 border-yellow-300' :
+                order.status === 'VALIDATED' ? 'bg-blue-50 border-blue-300' :
+                order.status === 'SERVED' ? 'bg-gray-50 border-gray-300' :
+                'bg-orange-50 border-orange-300'
+              }`}>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="font-bold text-lg">
+                      {order.ticket_number ? `Ticket #${order.ticket_number}` : `Commande #${order.order_number}`}
+                    </div>
+                    <div className="text-sm text-slate-600 mt-1">
+                      {order.status === 'PENDING' && '⏳ En attente de validation'}
+                      {order.status === 'VALIDATED' && '✅ Validée'}
+                      {order.status === 'PREPARING' && '👨‍🍳 En préparation'}
+                      {order.status === 'READY' && '✨ Prête!'}
+                      {order.status === 'SERVED' && '✅ Servie'}
+                    </div>
+                  </div>
+                  {order.status === 'READY' && (
+                    <span className="badge-success animate-pulse">🔔 À récupérer!</span>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

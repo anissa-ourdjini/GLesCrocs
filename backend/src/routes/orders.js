@@ -3,6 +3,24 @@ import { pool } from '../db/pool.js';
 import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
+
+function io(req) {
+  return req.app.get('io');
+}
+
+// Fonction helper pour émettre les commandes d'un client
+async function emitClientOrders(io, client_uid) {
+  if (!client_uid) return;
+  const [orders] = await pool.query(
+    `SELECT o.id, o.ticket_number, o.status, o.order_number, o.customer_name, o.created_at
+    FROM orders o
+    WHERE o.client_uid = ? AND o.status != 'CANCELLED'
+    ORDER BY o.created_at DESC LIMIT 20`,
+    [client_uid]
+  );
+  io.to(`client_${client_uid}`).emit('client_orders_update', { orders });
+}
+
 // Annulation d'une commande (client)
 router.post('/:id/cancel', async (req, res) => {
   const id = Number(req.params.id);
@@ -16,10 +34,6 @@ router.post('/:id/cancel', async (req, res) => {
   req.app.get('io').emit('queue_update');
   res.json({ ok: true });
 });
-
-function io(req) {
-  return req.app.get('io');
-}
 
 router.get('/queue', async (req, res) => {
     const [[{ current }]] = await pool.query("SELECT COALESCE(MAX(ticket_number),0) AS current FROM orders WHERE status='SERVED'");
@@ -53,6 +67,10 @@ router.post('/', async (req, res, next) => {
     await conn.commit();
 
     io(req).emit('order_update', { orderId, status: 'PENDING' });
+    // Notifie le client spécifique de sa nouvelle commande
+    if (client_uid) {
+      emitClientOrders(io(req), client_uid);
+    }
     res.status(201).json({ id: orderId, order_number });
   } catch (e) {
     await conn.rollback();
@@ -64,23 +82,35 @@ router.post('/', async (req, res, next) => {
 
 router.post('/:id/validate', requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
+  const [[order]] = await pool.query('SELECT client_uid FROM orders WHERE id=?', [id]);
   const [[{ nextTicket }]] = await pool.query('SELECT COALESCE(MAX(ticket_number),0)+1 AS nextTicket FROM orders');
   await pool.query('UPDATE orders SET status="VALIDATED", ticket_number=?, validated_at=NOW() WHERE id=?', [nextTicket, id]);
   io(req).emit('queue_update');
+  if (order?.client_uid) {
+    await emitClientOrders(io(req), order.client_uid);
+  }
   res.json({ ok: true, ticket_number: nextTicket });
 });
 
 router.post('/:id/ready', requireAdmin, async (req, res) => {
   const ticketNumber = Number(req.params.id);
+  const [[order]] = await pool.query('SELECT client_uid FROM orders WHERE ticket_number=?', [ticketNumber]);
   await pool.query('UPDATE orders SET status="READY", ready_at=NOW() WHERE ticket_number=?', [ticketNumber]);
   io(req).emit('queue_update');
+  if (order?.client_uid) {
+    await emitClientOrders(io(req), order.client_uid);
+  }
   res.json({ ok: true });
 });
 
 router.post('/:id/served', requireAdmin, async (req, res) => {
   const ticketNumber = Number(req.params.id);
+  const [[order]] = await pool.query('SELECT client_uid FROM orders WHERE ticket_number=?', [ticketNumber]);
   await pool.query('UPDATE orders SET status="SERVED", served_at=NOW() WHERE ticket_number=?', [ticketNumber]);
   io(req).emit('queue_update');
+  if (order?.client_uid) {
+    await emitClientOrders(io(req), order.client_uid);
+  }
   res.json({ ok: true });
 });
 
