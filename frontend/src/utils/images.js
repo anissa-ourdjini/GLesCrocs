@@ -12,27 +12,29 @@ function slugify(str) {
 const mappings = [
   ['sushi', 'Sushi en folie.jpg'],
   ['mega sushi', 'Mega sushi.jpg'],
-  ['ramen', 'ramen.svg'],
-  ['donburi', 'donburi.svg'],
-  ['miso', 'miso.svg'],
+  ['ramen', 'Ramen.jpg'],
+  ['donburi', 'Donburi poulet.jpg'],
+  ['miso', 'Soupe misot.jpg'],
   ['takoyaki', 'Takoyaki.jpg'],
   ['gyoza', 'Gyoza.jpg'],
   ['onigiri', 'Onigiri.jpg'],
   ['omuraisu', 'Omuraisu.jpg'],
-  ['dorayaki', 'Dorayakijpg.jpg'],
+  ['dorayaki', 'Dorayaki.jpg'],
   ['mochi', 'Mocchi.jpg'],
   ['matcha', 'Gateau au matcha.jpg'],
   ['bubble tea', 'Bubble tea.jpg'],
   ['ramune', 'Ramune.jpg'],
+  ['tempura', 'Tempura.jpg'],
+  ['alcool', 'Alcools japonais.jpg'],
 ];
 
 export function getMenuImage(name) {
   const s = slugify(name);
-  if (!s) return '/assets/menu/placeholder.svg';
+  if (!s) return '/asset/Images/logo.png';
 
   // direct keyword mapping
   for (const [key, file] of mappings) {
-    if (s.includes(slugify(key))) return `/assets/menu/${file}`;
+    if (s.includes(slugify(key))) return `/asset/Images/${file}`;
   }
 
   // heuristic: choose by prominent keywords
@@ -41,9 +43,9 @@ export function getMenuImage(name) {
   if (hits.length) {
     const hit = hits[0];
     const found = mappings.find(([key]) => slugify(key) === hit);
-    if (found) return `/assets/menu/${found[1]}`;
+    if (found) return `/asset/Images/${found[1]}`;
   }
 
   // fallback generic
-  return '/assets/menu/placeholder.svg';
+  return '/asset/Images/logo.png';
 }

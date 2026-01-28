@@ -12,7 +12,6 @@ export default function Client() {
   const [showNotification, setShowNotification] = useState(false);
   const [loading, setLoading] = useState(true);
   const [clientUid, setClientUid] = useState('');
-  const [myOrders, setMyOrders] = useState([]);
 
   // Génère ou récupère le client_uid depuis localStorage
   useEffect(() => {
@@ -22,98 +21,66 @@ export default function Client() {
       localStorage.setItem('client_uid', uid);
     }
     setClientUid(uid);
-    
-    // Charge le menu depuis le cache localStorage
-    const cachedMenu = localStorage.getItem('menu_cache');
-    if (cachedMenu) {
-      try {
-        const parsed = JSON.parse(cachedMenu);
-        setMenu(Array.isArray(parsed) ? parsed : []);
-      } catch (e) {
-        console.error('Erreur parsing menu cache:', e);
-      }
-    }
   }, []);
 
+  // Charge données
   useEffect(() => {
     if (!clientUid) return;
-    
     loadMenu();
     loadQueue();
+
     const socket = connectSocket();
-    
-    // Rejoint la room du client
     socket.emit('join_client_room', clientUid);
-    
     socket.on('queue_update', () => {
       loadQueue();
       loadMenu();
     });
-    
-    socket.on('client_orders_update', (data) => {
-      if (data?.orders) {
-        setMyOrders(data.orders);
-      }
-    });
-    
-    return () => {
-      socket.off('queue_update');
-      socket.off('client_orders_update');
-    };
+
+    return () => socket.off('queue_update');
   }, [clientUid]);
 
-  async function loadMenu() {
+  const loadMenu = async () => {
     try {
       const data = await api.getMenu();
-      const menuData = Array.isArray(data) ? data : [];
-      setMenu(menuData);
-      // Sauvegarde le menu en cache
-      localStorage.setItem('menu_cache', JSON.stringify(menuData));
+      setMenu(Array.isArray(data) ? data : []);
     } catch (e) {
-      console.error('Erreur chargement menu:', e);
-      // En cas d'erreur, garde le menu en cache si disponible
-      const cachedMenu = localStorage.getItem('menu_cache');
-      if (cachedMenu) {
-        try {
-          const parsed = JSON.parse(cachedMenu);
-          setMenu(Array.isArray(parsed) ? parsed : []);
-        } catch (err) {
-          setMenu([]);
-        }
-      } else {
-        setMenu([]);
-      }
+      console.error('Erreur menu:', e);
+      setMenu([]);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function loadQueue() {
+  const loadQueue = async () => {
     const data = await api.getQueue();
     setQueue(data);
-  }
+  };
 
-  function addToCart(item) {
+  const addToCart = (item) => {
     const existing = cart.find(c => c.menu_item_id === item.id);
     if (existing) {
       setCart(cart.map(c => c.menu_item_id === item.id ? { ...c, quantity: c.quantity + 1 } : c));
     } else {
       setCart([...cart, { menu_item_id: item.id, name: item.name, price: item.price_cents / 100, quantity: 1 }]);
     }
-  }
+  };
 
-  async function submitOrder() {
+  const submitOrder = async () => {
     if (cart.length === 0) return;
     try {
-      const order = await api.createOrder({ items: cart, customer_name: 'Client', client_uid: clientUid });
+      const order = await api.createOrder({ 
+        items: cart, 
+        customer_name: 'Client', 
+        client_uid: clientUid 
+      });
       setMyTicket(order.id);
       setCart([]);
       setShowNotification(true);
       setTimeout(() => setShowNotification(false), 4000);
     } catch (e) {
-      console.error('Erreur commande:', e);
+      console.error('Erreur:', e);
     }
-  }
+  };
 
   const myOrder = queue.queue.find(q => q.id === myTicket);
   const totalPrice = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -122,7 +89,7 @@ export default function Client() {
     <div className="space-y-8">
       <div className="grid md:grid-cols-3 gap-6">
         <div className="md:col-span-2 glass rounded-2xl overflow-hidden h-72 md:h-96 relative group">
-          <img src="/assets/logo.png" alt="GLesCrocs" className="absolute inset-0 w-full h-full object-contain bg-white" />
+          <img src="/asset/Images/logo.png" alt="GLesCrocs" className="absolute inset-0 w-full h-full object-contain bg-white" />
         </div>
         <div className="space-y-4">
           <div className="card h-full bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 overflow-hidden flex flex-col">
@@ -136,7 +103,7 @@ export default function Client() {
                 <p className="text-xs text-slate-500 text-center py-4">Aucune commande</p>
               ) : (
                 queue.queue.slice(0, 8).map((order, idx) => (
-                  <div key={order.id} className={`text-xs p-2 rounded border ${ 
+                  <div key={order.id} className={`text-xs p-2 rounded border ${
                     idx === 0 ? 'bg-yellow-100 border-yellow-300 font-bold' :
                     order.status === 'READY' ? 'bg-green-100 border-green-300' :
                     order.status === 'PREPARING' ? 'bg-orange-100 border-orange-300' :
@@ -162,43 +129,6 @@ export default function Client() {
               <h3 className="font-bold text-green-700">Commande créée!</h3>
               <p className="text-sm text-green-600">Numéro: <strong>{myTicket}</strong></p>
             </div>
-          </div>
-        </div>
-      )}
-
-      {myOrders.length > 0 && (
-        <div className="card bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500">
-          <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <span className="text-2xl">📝</span> Mes commandes
-          </h3>
-          <div className="space-y-3">
-            {myOrders.map(order => (
-              <div key={order.id} className={`p-4 rounded-lg border-2 ${
-                order.status === 'READY' ? 'bg-green-50 border-green-300' :
-                order.status === 'PREPARING' ? 'bg-yellow-50 border-yellow-300' :
-                order.status === 'VALIDATED' ? 'bg-blue-50 border-blue-300' :
-                order.status === 'SERVED' ? 'bg-gray-50 border-gray-300' :
-                'bg-orange-50 border-orange-300'
-              }`}>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="font-bold text-lg">
-                      {order.ticket_number ? `Ticket #${order.ticket_number}` : `Commande #${order.order_number}`}
-                    </div>
-                    <div className="text-sm text-slate-600 mt-1">
-                      {order.status === 'PENDING' && '⏳ En attente de validation'}
-                      {order.status === 'VALIDATED' && '✅ Validée'}
-                      {order.status === 'PREPARING' && '👨‍🍳 En préparation'}
-                      {order.status === 'READY' && '✨ Prête!'}
-                      {order.status === 'SERVED' && '✅ Servie'}
-                    </div>
-                  </div>
-                  {order.status === 'READY' && (
-                    <span className="badge-success animate-pulse">🔔 À récupérer!</span>
-                  )}
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       )}
@@ -287,23 +217,6 @@ export default function Client() {
             <span className="text-2xl font-bold text-accent-600">{totalPrice.toFixed(2)}€</span>
           </div>
           <button onClick={submitOrder} className="btn-primary w-full text-lg">🍱 Commander</button>
-        </div>
-      )}
-
-      {!myTicket && queue.queue.length > 0 && (
-        <div className="card bg-gradient-to-r from-blue-50 to-cyan-50 border-l-4 border-blue-500 text-center">
-          <div className="flex justify-center mb-4 text-3xl">🎫</div>
-          <p className="text-sm text-slate-600 mb-4">Chercher mon numéro</p>
-          <input
-            type="number"
-            placeholder="ex: 42"
-            onChange={(e) => {
-              const num = Number(e.target.value);
-              const found = queue.queue.find(q => q.ticket_number === num);
-              if (found) setMyTicket(found.id);
-            }}
-            className="input-field mb-2 text-center"
-          />
         </div>
       )}
     </div>

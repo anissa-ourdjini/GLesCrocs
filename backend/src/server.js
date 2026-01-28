@@ -68,7 +68,7 @@ async function emitQueue(io) {
   // Récupère la file d'attente et l'envoie à tous les clients
   const [[{ current }]] = await pool.query("SELECT COALESCE(MAX(ticket_number),0) AS current FROM orders WHERE status='SERVED'");
   const [queue] = await pool.query(
-    `SELECT o.ticket_number, o.status, o.id, o.customer_name
+    `SELECT o.ticket_number, o.status, o.id, o.customer_name, o.estimated_wait_seconds
     FROM orders o
     WHERE ((o.ticket_number IS NOT NULL AND o.status IN ('VALIDATED','PREPARING','READY') AND o.ticket_number > ?)
       OR (o.status='PENDING' AND o.ticket_number IS NULL))
@@ -81,7 +81,7 @@ async function emitQueue(io) {
 async function emitClientOrders(io, client_uid) {
   if (!client_uid) return;
   const [orders] = await pool.query(
-    `SELECT o.id, o.ticket_number, o.status, o.order_number, o.customer_name, o.created_at
+    `SELECT o.id, o.ticket_number, o.status, o.order_number, o.customer_name, o.created_at, o.estimated_wait_seconds
     FROM orders o
     WHERE o.client_uid = ? AND o.status != 'CANCELLED'
     ORDER BY o.created_at DESC LIMIT 20`,

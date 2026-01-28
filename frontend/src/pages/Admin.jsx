@@ -1,288 +1,224 @@
 import { useState, useEffect } from 'react';
-import { api, API_URL } from '../services/api';
+import { api } from '../services/api';
 import { connectSocket } from '../services/socket';
-import { LogOut, Check, Clock, AlertCircle } from 'lucide-react';
-import { getMenuImage } from '../utils/images';
-
-const blankItem = { name: '', description: '', price_cents: '', avg_prep_seconds: 300, image_url: '', active: true };
-
-function MenuForm({ data, setData, onSubmit, submitLabel, onCancel, notify }) {
-  const [uploading, setUploading] = useState(false);
-  const price = data.price_cents ? Number(data.price_cents) / 100 : '';
-  const prepMinutes = Math.round((data.avg_prep_seconds || 300) / 60);
-  const preview = data.image_url ? `${API_URL}${data.image_url}` : getMenuImage(data.name);
-
-  async function handleUpload(file) {
-    if (!file) return;
-    try {
-      setUploading(true);
-      const { url } = await api.uploadImage(file);
-      setData(i => ({ ...i, image_url: url }));
-      notify?.('Image téléversée ✓');
-    } catch (err) {
-      notify?.(err.message || 'Upload échoué');
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="grid md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">Nom</label>
-          <input className="input-field" value={data.name} onChange={e => setData({ ...data, name: e.target.value })} placeholder="Ex: Ramen Shoyu" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">Prix (€)</label>
-          <input type="number" min="0" step="0.01" className="input-field" value={price} onChange={e => setData({ ...data, price_cents: Math.round(Number(e.target.value || 0) * 100) })} placeholder="Ex: 11.00" />
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-2">Description</label>
-        <textarea className="input-field" rows={3} value={data.description} onChange={e => setData({ ...data, description: e.target.value })} placeholder="Ex: Bouillon soja, porc, nouilles" />
-      </div>
-
-      <div className="grid sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">URL de l'image</label>
-          <input className="input-field" value={data.image_url} onChange={e => setData({ ...data, image_url: e.target.value })} placeholder="/uploads/xxx.jpg ou https://..." />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">Téléverser</label>
-          <div className="flex items-center gap-3">
-            <input type="file" accept="image/*" onChange={e => handleUpload(e.target.files?.[0])} />
-            {uploading && <span className="text-sm text-slate-500">Envoi...</span>}
-          </div>
-          <p className="muted mt-1">Servies depuis /uploads/</p>
-        </div>
-      </div>
-
-      <div className="grid sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">Préparation (min)</label>
-          <input type="number" min="1" step="1" className="input-field" value={prepMinutes} onChange={e => setData({ ...data, avg_prep_seconds: Math.max(1, Number(e.target.value || 5)) * 60 })} />
-        </div>
-        <div className="flex items-center gap-2 pt-7">
-          <input id="active" type="checkbox" checked={!!data.active} onChange={e => setData({ ...data, active: e.target.checked })} />
-          <label htmlFor="active" className="text-sm text-slate-700">Actif</label>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between mt-2">
-        <div className="flex items-center gap-3">
-          <span className="muted">Prévisualisation:</span>
-          <img src={preview} alt="preview" className="w-20 h-16 object-cover rounded-md border border-slate-200 bg-slate-50" onError={(e)=>{e.target.style.display='none'}} />
-        </div>
-        <div className="flex gap-3">
-          {onCancel && (
-            <button onClick={onCancel} className="btn-secondary">
-              Annuler
-            </button>
-          )}
-          <button onClick={onSubmit} className="btn-primary">
-            {submitLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { LogOut, Plus, ChefHat, Clock, Check, Trash2, Edit2, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function Admin() {
   const [authed, setAuthed] = useState(!!localStorage.getItem('admin_token'));
-  const [hasAdmin, setHasAdmin] = useState(true);
-  const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [newAdminEmail, setNewAdminEmail] = useState('');
-  const [newAdminPassword, setNewAdminPassword] = useState('');
-  const [queue, setQueue] = useState({ currentServing: 0, queue: [] });
+  const [queue, setQueue] = useState([]);
   const [menu, setMenu] = useState([]);
-  const [notification, setNotification] = useState('');
-  const [newItem, setNewItem] = useState(blankItem);
-  const [editingItem, setEditingItem] = useState(null);
-  const [editFormData, setEditFormData] = useState(null);
+  const [newName, setNewName] = useState('');
+  const [newPrice, setNewPrice] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [newImage, setNewImage] = useState(null);
+  const [newImageUrl, setNewImageUrl] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [orderDetails, setOrderDetails] = useState({});
 
   useEffect(() => {
-    // Check if at least one admin exists (for bootstrap flow)
-    (async () => {
-      try {
-        const info = await api.authInfo();
-        setHasAdmin(!!info.hasAdmin);
-      } catch {
-        setHasAdmin(true);
-      }
-    })();
-
     if (authed) {
       loadQueue();
       loadMenu();
       const socket = connectSocket();
-      socket.on('queue_update', loadQueue);
+      socket.on('queue_update', () => {
+        loadQueue();
+        loadMenu();
+      });
       return () => socket.off('queue_update');
     }
   }, [authed]);
 
-  async function login() {
+  const loadQueue = async () => {
+    try {
+      const data = await api.getQueue();
+      setQueue(data.queue || []);
+      // Précharger les détails de tous les items
+      const details = {};
+      for (const order of data.queue || []) {
+        if (!orderDetails[order.id]) {
+          try {
+            const itemRes = await fetch(`http://localhost:4000/api/orders/${order.id}/items`);
+            if (itemRes.ok) {
+              details[order.id] = await itemRes.json();
+            }
+          } catch (e) {
+            console.error('Erreur items:', e);
+          }
+        }
+      }
+      if (Object.keys(details).length > 0) {
+        setOrderDetails(prev => ({ ...prev, ...details }));
+      }
+    } catch (e) {
+      console.error('Erreur queue:', e);
+    }
+  };
+
+  const loadMenu = async () => {
+    try {
+      const data = await api.getMenu();
+      setMenu(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error('Erreur menu:', e);
+    }
+  };
+
+  const login = async () => {
     try {
       const res = await api.login(email, password);
       localStorage.setItem('admin_token', res.token);
       setAuthed(true);
-      setNotification('');
       setEmail('');
       setPassword('');
     } catch (e) {
-      setNotification('Connexion échouée');
-      setTimeout(() => setNotification(''), 3000);
+      alert('Erreur connexion: ' + (e.message || ''));
     }
-  }
+  };
 
-  async function registerNewAdmin() {
+  const validateOrder = async (id) => {
     try {
-      await api.register(newAdminEmail, newAdminPassword);
-      showNotification('Admin créé avec succès ✓');
-      setNewAdminEmail('');
-      setNewAdminPassword('');
-      setShowRegisterModal(false);
+      await api.validateOrder(id);
+      await loadQueue();
     } catch (e) {
-      setNotification(e.message || 'Erreur lors de la création');
-      setTimeout(() => setNotification(''), 3000);
+      alert('Erreur: ' + e.message);
     }
-  }
+  };
 
-  async function loadQueue() {
-    const data = await api.getQueue();
-    setQueue(data);
-  }
-
-  async function loadMenu() {
-    const data = await api.getMenu();
-    setMenu(data);
-  }
-
-  async function handleValidate(id) {
-    await api.validateOrder(id);
-    loadQueue();
-    showNotification('Commande validée ✓');
-  }
-
-  async function handleReady(id) {
-    await api.markReady(id);
-    loadQueue();
-    showNotification('Marquée comme prête ✓');
-  }
-
-  async function handleServed(id) {
-    await api.markServed(id);
-    loadQueue();
-    showNotification('Commande servie ✓');
-  }
-
-  async function handleDelete(id) {
-    if (!confirm('Supprimer cette commande ?')) return;
+  const markReady = async (id) => {
     try {
-      await api.cancelOrder(id);
-      loadQueue();
-      showNotification('Commande supprimée ✓');
+      await api.markReady(id);
+      await loadQueue();
     } catch (e) {
-      showNotification('Erreur suppression');
+      alert('Erreur: ' + e.message);
     }
-  }
+  };
 
-  function showNotification(msg) {
-    setNotification(msg);
-    setTimeout(() => setNotification(''), 2000);
-  }
+  const markServed = async (id) => {
+    try {
+      await api.markServed(id);
+      await loadQueue();
+    } catch (e) {
+      alert('Erreur: ' + e.message);
+    }
+  };
 
-  function openEditModal(item) {
-    setEditingItem(item);
-    setEditFormData({ ...item });
-  }
-
-  async function addItem() {
-    if (!newItem.name || !newItem.price_cents) {
-      showNotification('Nom et prix requis');
+  const addItem = async () => {
+    if (!newName || !newPrice) {
+      alert('Remplir nom et prix');
       return;
     }
     try {
-      await api.createMenuItem({ ...newItem });
-      setNewItem(blankItem);
+      let imageUrl = newImageUrl;
+      
+      // Si un fichier est sélectionné, l'uploader
+      if (newImage) {
+        const uploadRes = await api.uploadImage(newImage);
+        imageUrl = uploadRes.url;
+      }
+      
+      if (editingId) {
+        // Modification
+        await api.updateMenuItem(editingId, {
+          name: newName,
+          description: newDesc,
+          price_cents: Math.round(parseFloat(newPrice) * 100),
+          image_url: imageUrl,
+          active: true
+        });
+        setEditingId(null);
+      } else {
+        // Création
+        await api.createMenuItem({
+          name: newName,
+          description: newDesc,
+          price_cents: Math.round(parseFloat(newPrice) * 100),
+          avg_prep_seconds: 300,
+          image_url: imageUrl,
+          active: true
+        });
+      }
+      
+      setNewName('');
+      setNewPrice('');
+      setNewDesc('');
+      setNewImage(null);
+      setNewImageUrl('');
       await loadMenu();
-      showNotification('Plat ajouté ✓');
     } catch (e) {
-      showNotification(`Erreur: ${e.message}`);
+      alert('Erreur: ' + e.message);
     }
-  }
+  };
 
-  async function saveEditedItem() {
-    if (!editFormData.name || !editFormData.price_cents) {
-      showNotification('Nom et prix requis');
-      return;
-    }
-    try {
-      await api.updateMenuItem(editingItem.id, editFormData);
-      setEditingItem(null);
-      setEditFormData(null);
-      await loadMenu();
-      showNotification('Plat modifié ✓');
-    } catch (e) {
-      showNotification('Erreur lors de la modification');
-    }
-  }
+  const editItem = (item) => {
+    setEditingId(item.id);
+    setNewName(item.name);
+    setNewDesc(item.description || '');
+    setNewPrice((item.price_cents / 100).toString());
+    setNewImageUrl(item.image_url || '');
+    setNewImage(null);
+  };
 
-  function logout() {
+  const deleteItem = async (id) => {
+    if (confirm('Supprimer ce plat ?')) {
+      try {
+        await api.deleteMenuItem(id);
+        await loadMenu();
+      } catch (e) {
+        alert('Erreur: ' + e.message);
+      }
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setNewName('');
+    setNewPrice('');
+    setNewDesc('');
+    setNewImage(null);
+    setNewImageUrl('');
+  };
+
+  const logout = () => {
     localStorage.removeItem('admin_token');
     setAuthed(false);
-  }
+  };
 
-  if (!authed && hasAdmin) {
+  // CONNEXION
+  if (!authed) {
     return (
-      <div className="min-h-[calc(100vh-200px)] flex items-center justify-center">
-        <div className="card w-full max-w-md">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-purple-50 to-orange-50 p-4">
+        <div className="card max-w-md w-full bg-white shadow-xl rounded-2xl p-8">
           <div className="text-center mb-8">
-            <img src="/assets/logo.png" alt="GLesCrocs" className="mx-auto w-20 h-20 mb-4 rounded-md bg-white/90 p-2" onError={(e)=>{e.target.style.display='none'}} />
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-primary-600 to-accent-500 bg-clip-text text-transparent">
-              Connexion Admin
-            </h1>
-            <p className="text-sm text-slate-500 mt-2">Administration</p>
+            <div className="text-5xl mb-4">👨‍🍳</div>
+            <h1 className="text-3xl font-bold text-slate-800">Admin</h1>
+            <p className="text-slate-600 mt-2">Gestion cuisine</p>
           </div>
 
-          {notification && (
-            <div className="mb-4 p-3 bg-red-100 border border-red-500 rounded-lg text-red-700 text-sm">
-              {notification}
-            </div>
-          )}
-
-          <div className="space-y-4 mb-6">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && login()}
-                className="input-field"
-                placeholder="admin@demo.local"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Mot de passe</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && login()}
-                className="input-field"
-                placeholder="••••••••"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 mb-2">
-            <button onClick={login} className="btn-primary w-full">
-              Se connecter
+          <div className="space-y-4">
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && login()}
+              className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-primary-500"
+            />
+            <input
+              type="password"
+              placeholder="Mot de passe"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && login()}
+              className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-primary-500"
+            />
+            <button
+              onClick={login}
+              className="w-full bg-gradient-to-r from-primary-500 to-accent-500 hover:from-primary-600 hover:to-accent-600 text-white font-bold py-3 rounded-lg transition"
+            >
+              Connexion
             </button>
           </div>
         </div>
@@ -290,364 +226,244 @@ export default function Admin() {
     );
   }
 
-  // Bootstrap: show first-admin creation when no admin exists yet
-  if (!authed && !hasAdmin) {
-    return (
-      <div className="min-h-[calc(100vh-200px)] flex items-center justify-center">
-        <div className="card w-full max-w-md">
-          <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold">Créer le premier administrateur</h1>
-            <p className="text-sm text-slate-600 mt-1">Ce formulaire est disponible uniquement car aucun admin n’existe encore.</p>
-          </div>
-
-          {notification && (
-            <div className="mb-4 p-3 bg-red-100 border border-red-500 rounded-lg text-red-700 text-sm">
-              {notification}
-            </div>
-          )}
-
-          <div className="space-y-4 mb-6">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
-              <input type="email" value={newAdminEmail} onChange={(e) => setNewAdminEmail(e.target.value)} className="input-field" placeholder="vous@exemple.com" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Mot de passe</label>
-              <input type="password" value={newAdminPassword} onChange={(e) => setNewAdminPassword(e.target.value)} className="input-field" placeholder="••••••••" />
-              <p className="text-xs text-slate-500 mt-2">Minimum 6 caractères</p>
-            </div>
-          </div>
-
-          <button
-            onClick={async () => {
-              try {
-                const res = await api.register(newAdminEmail, newAdminPassword);
-                if (res?.token) {
-                  localStorage.setItem('admin_token', res.token);
-                  setAuthed(true);
-                  setHasAdmin(true);
-                  setNotification('Admin créé ✓');
-                } else {
-                  setNotification('Création réussie, veuillez vous connecter');
-                }
-              } catch (e) {
-                setNotification(e.message || 'Erreur de création');
-                setTimeout(() => setNotification(''), 3000);
-              }
-            }}
-            className="btn-primary w-full"
-          >
-            Créer l’admin
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+  // ADMIN PAGE
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-4xl font-bold text-slate-900 flex items-center gap-3">
-            <img src="/assets/logo.png" alt="GLesCrocs" className="w-12 h-12 rounded-md" onError={(e)=>{e.target.style.display='none'}} />
-            <span className="text-2xl font-extrabold">GLesCrocs</span>
-            <span className="text-base text-slate-600 ml-2">Admin</span>
-          </h1>
-          <p className="text-slate-600 mt-2">Gérez votre file d'attente et votre menu</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => setShowRegisterModal(true)} className="btn-secondary flex items-center gap-2">
-            ➕ Nouvel admin
-          </button>
-          <button onClick={logout} className="btn-secondary flex items-center gap-2">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-orange-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* HEADER */}
+        <div className="flex items-center justify-between bg-white rounded-2xl p-6 shadow-lg border-l-4 border-primary-500 mb-8">
+          <div className="flex items-center gap-4">
+            <ChefHat className="w-10 h-10 text-primary-500" />
+            <div>
+              <h1 className="text-3xl font-bold text-slate-800">Admin Panel</h1>
+              <p className="text-slate-600">Gestion en temps réel</p>
+            </div>
+          </div>
+          <button
+            onClick={logout}
+            className="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition"
+          >
             <LogOut className="w-5 h-5" /> Déconnexion
           </button>
         </div>
-      </div>
 
-      {/* Register Modal */}
-      {showRegisterModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="card w-full max-w-md">
-            <h2 className="text-2xl font-bold mb-6">Créer un nouvel admin</h2>
-            
-            {notification && (
-              <div className="mb-4 p-3 bg-red-100 border border-red-500 rounded-lg text-red-700 text-sm">
-                {notification}
-              </div>
-            )}
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* QUEUE SECTION */}
+          <div className="lg:col-span-2">
+            <div className="bg-gradient-to-br from-orange-50 to-red-50 rounded-2xl p-6 border-2 border-orange-200 shadow-lg">
+              <h2 className="text-2xl font-bold mb-6 flex items-center gap-3 text-orange-700">
+                <Clock className="w-7 h-7" /> Commandes ({queue.length})
+              </h2>
 
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
-                <input
-                  type="email"
-                  value={newAdminEmail}
-                  onChange={(e) => setNewAdminEmail(e.target.value)}
-                  className="input-field"
-                  placeholder="nouveau@admin.local"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Mot de passe</label>
-                <input
-                  type="password"
-                  value={newAdminPassword}
-                  onChange={(e) => setNewAdminPassword(e.target.value)}
-                  className="input-field"
-                  placeholder="••••••••"
-                />
-                <p className="text-xs text-slate-500 mt-2">Min 6 caractères</p>
-              </div>
-            </div>
+              {queue.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-4xl mb-4">😴</p>
+                  <p className="text-slate-600">Aucune commande</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {queue.map((order) => (
+                    <div
+                      key={order.id}
+                      className={`p-4 rounded-xl border-2 transition ${
+                        order.status === 'VALIDATED'
+                          ? 'bg-blue-50 border-blue-300'
+                          : order.status === 'READY'
+                          ? 'bg-green-50 border-green-300'
+                          : 'bg-orange-50 border-orange-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-2xl font-bold">🎫 #{order.ticket_number || order.id}</span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-xs font-bold px-3 py-1 rounded-full ${
+                              order.status === 'VALIDATED'
+                                ? 'bg-blue-200 text-blue-700'
+                                : order.status === 'READY'
+                                ? 'bg-green-200 text-green-700'
+                                : 'bg-orange-200 text-orange-700'
+                            }`}
+                          >
+                            {order.status}
+                          </span>
+                          <button
+                            onClick={() => setSelectedOrderId(selectedOrderId === order.id ? null : order.id)}
+                            className="p-1 hover:bg-white/50 rounded transition"
+                          >
+                            {selectedOrderId === order.id ? (
+                              <ChevronUp className="w-5 h-5" />
+                            ) : (
+                              <ChevronDown className="w-5 h-5" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
 
-            <div className="flex gap-3">
-              <button onClick={() => setShowRegisterModal(false)} className="btn-secondary w-full">
-                Annuler
-              </button>
-              <button onClick={registerNewAdmin} className="btn-primary w-full">
-                Créer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                      {/* Items détails */}
+                      {selectedOrderId === order.id && (
+                        <div className="mb-4 p-3 bg-white/50 rounded-lg border border-current/20">
+                          <p className="font-semibold text-slate-700 mb-2">📋 Items :</p>
+                          {orderDetails[order.id]?.length > 0 ? (
+                            <div className="space-y-1">
+                              {orderDetails[order.id].map((item, idx) => (
+                                <div key={idx} className="flex justify-between text-sm">
+                                  <span>{item.quantity}x {item.name}</span>
+                                  <span className="font-semibold">{((item.price_cents * item.quantity) / 100).toFixed(2)}€</span>
+                                </div>
+                              ))}
+                              <div className="border-t pt-1 mt-1 font-bold text-slate-800">
+                                Total: {(orderDetails[order.id].reduce((sum, item) => sum + (item.price_cents * item.quantity), 0) / 100).toFixed(2)}€
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-slate-600">Chargement...</p>
+                          )}
+                        </div>
+                      )}
 
-      {/* Current Serving Display */}
-      <div className="card bg-gradient-to-r from-primary-600 to-primary-800 text-white border-none">
-        <div className="text-center">
-          <p className="text-primary-100 mb-2">Numéro en cours</p>
-          <div className="text-7xl font-bold animate-bounce-in mb-2">{queue.currentServing}</div>
-          <p className="text-primary-100">🎫 {queue.queue.length} commandes</p>
-        </div>
-      </div>
-
-      {/* Notification */}
-      {notification && (
-        <div className="animate-slide-in card bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500">
-          <div className="flex items-center gap-3">
-            <Check className="w-6 h-6 text-green-600" />
-            <p className="text-green-700 font-semibold">{notification}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Queue Management */}
-      <div>
-        <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-          <span className="text-3xl">📋</span> File d'attente ({queue.queue.length})
-        </h2>
-
-        {queue.queue.length === 0 ? (
-          <div className="card text-center py-12 bg-gradient-to-br from-slate-50 to-slate-100">
-            <div className="text-5xl mb-4">🎉</div>
-            <p className="text-slate-600 text-lg">Aucune commande en attente</p>
-          </div>
-        ) : (
-          <div className="grid gap-6">
-            {(() => {
-              // Group orders by order_number
-              const groupedOrders = queue.queue.reduce((acc, order) => {
-                const key = order.order_number || order.id;
-                if (!acc[key]) acc[key] = [];
-                acc[key].push(order);
-                return acc;
-              }, {});
-
-              // Get unique order_numbers in order
-              const orderedKeys = Object.keys(groupedOrders).sort((a, b) => {
-                const aNum = queue.queue.find(o => (o.order_number || o.id) == a)?.order_number;
-                const bNum = queue.queue.find(o => (o.order_number || o.id) == b)?.order_number;
-                return (aNum || 0) - (bNum || 0);
-              });
-
-              return orderedKeys.map((orderKey, index) => {
-                const orders = groupedOrders[orderKey];
-                const orderNumber = index + 1;
-                const firstOrder = orders[0];
-                const allReady = orders.every(o => o.status === 'READY');
-                const allServed = orders.every(o => o.status === 'SERVED');
-                const anyPending = orders.some(o => o.status === 'PENDING');
-
-                return (
-                  <div
-                    key={orderKey}
-                    className={`card transition-all duration-300 ${
-                      allReady
-                        ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-l-green-500'
-                        : anyPending
-                        ? 'bg-gradient-to-r from-yellow-50 to-orange-50 border-l-4 border-l-orange-500'
-                        : 'bg-gradient-to-r from-blue-50 to-cyan-50 border-l-4 border-l-blue-500'
-                    }`}
-                  >
-                    {/* Commande Header */}
-                    <div className="flex items-start justify-between mb-4 pb-4 border-b border-slate-200">
-                      <div className="flex-1">
-                        <h3 className="text-2xl font-bold text-primary-600">Commande {orderNumber}</h3>
-                        {firstOrder.order_number && (
-                          <p className="text-xs text-slate-500 mt-1">Numéro client: {firstOrder.order_number}</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {order.status === 'PENDING' && (
+                          <button
+                            onClick={() => validateOrder(order.id)}
+                            className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg font-semibold transition"
+                          >
+                            ✓ Valider
+                          </button>
+                        )}
+                        {order.status === 'VALIDATED' && (
+                          <button
+                            onClick={() => markReady(order.id)}
+                            className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-semibold transition"
+                          >
+                            👨‍🍳 Prêt
+                          </button>
+                        )}
+                        {order.status === 'READY' && (
+                          <button
+                            onClick={() => markServed(order.id)}
+                            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition"
+                          >
+                            <Check className="w-4 h-4" /> Servie
+                          </button>
                         )}
                       </div>
                     </div>
-
-                    {/* Items in order */}
-                    <div className="space-y-3 mb-4">
-                      {orders.map((order, idx) => (
-                        <div
-                          key={order.id || `order-${idx}`}
-                          className="flex items-start justify-between p-3 bg-white rounded-lg"
-                        >
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-slate-900">#{order.ticket_number || `Ticket ${idx + 1}`}</span>
-                              <span
-                                className={`badge ${
-                                  order.status === 'READY'
-                                    ? 'badge-success'
-                                    : order.status === 'VALIDATED'
-                                    ? 'badge-warning'
-                                    : 'badge-info'
-                                }`}
-                              >
-                                {order.status === 'READY' && '✓ '}
-                                {order.status === 'READY' ? 'Prêt' : order.status === 'VALIDATED' ? 'Validée' : 'En attente'}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-2 text-slate-700">
-                              <Clock className="w-4 h-4" />
-                              <span className="text-sm">
-                                {order.estimated_wait_seconds !== undefined ? Math.round(order.estimated_wait_seconds / 60) : '?'} min
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Action Buttons */}
-                          <div className="flex gap-2 ml-4">
-                            {order.status === 'PENDING' && (
-                              <>
-                                <button
-                                  onClick={() => handleValidate(order.id)}
-                                  className="btn-small bg-primary-600 text-white hover:bg-primary-700"
-                                >
-                                  ✓ Valider
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(order.id)}
-                                  className="btn-small bg-red-600 text-white hover:bg-red-700"
-                                >
-                                  🗑️ Supprimer
-                                </button>
-                              </>
-                            )}
-                            {order.status === 'VALIDATED' && (
-                              <>
-                                <button
-                                  onClick={() => handleReady(order.id)}
-                                  className="btn-small bg-orange-500 text-white hover:bg-orange-600"
-                                >
-                                  🔔 Prêt
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(order.id)}
-                                  className="btn-small bg-red-600 text-white hover:bg-red-700"
-                                >
-                                  🗑️ Supprimer
-                                </button>
-                              </>
-                            )}
-                            {order.status === 'READY' && (
-                              <>
-                                <button
-                                  onClick={() => handleServed(order.id)}
-                                  className="btn-small bg-green-600 text-white hover:bg-green-700"
-                                >
-                                  ✓ Servie
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(order.id)}
-                                  className="btn-small bg-red-600 text-white hover:bg-red-700"
-                                >
-                                  🗑️ Supprimer
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              });
-            })()}
-          </div>
-        )}
-      </div>
-
-      {/* Menu Management */}
-      <div>
-        <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-          <span className="text-3xl">🍜</span> Menu ({menu.length})
-        </h2>
-
-        {/* Add new menu item */}
-        <div className="card mb-6">
-          <h3 className="text-lg font-bold mb-4">Ajouter un plat</h3>
-          <MenuForm data={newItem} setData={setNewItem} onSubmit={addItem} submitLabel="Ajouter" notify={showNotification} />
-        </div>
-
-        {menu.length === 0 ? (
-          <div className="card text-center py-12 bg-gradient-to-br from-slate-50 to-slate-100">
-            <p className="text-slate-600 text-lg">Aucun plat au menu</p>
-          </div>
-        ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {menu.map(item => (
-              <div key={item.id != null ? item.id : `item-${menu.indexOf(item)}`} className="card">
-                <div className="flex items-start justify-between mb-3 gap-4">
-                  <img src={item.image_url ? `${API_URL}${item.image_url}` : getMenuImage(item.name)} alt={item.name} className="w-24 h-20 object-cover rounded-md mr-2" onError={(e)=>{ e.target.src = getMenuImage(item.name); e.target.onerror = null; }} />
-                  <div className="flex-1">
-                    <h3 className="font-bold text-lg text-slate-900">{item.name}</h3>
-                    <p className="text-xs text-slate-500 mt-1">ID: {item.id}</p>
-                    <p className="text-sm text-slate-600 mb-3 line-clamp-2">{item.description}</p>
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
-                      <Clock className="w-4 h-4" />
-                      {Math.round(item.avg_prep_seconds / 60)} min
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-3">
-                    <span className="badge-success whitespace-nowrap ml-2">{(item.price_cents / 100).toFixed(2)}€</span>
-                    <button onClick={() => openEditModal(item)} className="btn-small bg-slate-200 text-slate-700 hover:bg-slate-300">✏️ Éditer</button>
-                  </div>
+                  ))}
                 </div>
-              </div>
-            ))}
+              )}
+            </div>
           </div>
-        )}
-      </div>
 
-      {/* Edit Menu Item Modal */}
-      {editingItem && editFormData && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="card w-full max-w-2xl">
-            <h2 className="text-2xl font-bold mb-6">Modifier: {editingItem.name}</h2>
-            
-            {notification && (
-              <div className="mb-4 p-3 bg-red-100 border border-red-500 rounded-lg text-red-700 text-sm">
-                {notification}
+          {/* MENU SECTION */}
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 border-2 border-green-200 shadow-lg h-fit">
+            <h2 className="text-2xl font-bold mb-6 flex items-center gap-3 text-green-700">
+              <Edit2 className="w-7 h-7" /> {editingId ? 'Modifier' : 'Ajouter'}
+            </h2>
+
+            <div className="space-y-4 mb-6">
+              <input
+                type="text"
+                placeholder="Nom du plat"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="w-full px-4 py-2 border-2 border-green-300 rounded-lg focus:outline-none focus:border-green-500"
+              />
+              <input
+                type="text"
+                placeholder="Description"
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+                className="w-full px-4 py-2 border-2 border-green-300 rounded-lg focus:outline-none focus:border-green-500"
+              />
+              <input
+                type="number"
+                placeholder="Prix (€)"
+                value={newPrice}
+                onChange={(e) => setNewPrice(e.target.value)}
+                step="0.01"
+                className="w-full px-4 py-2 border-2 border-green-300 rounded-lg focus:outline-none focus:border-green-500"
+              />
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Image</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    setNewImage(e.target.files[0]);
+                    if (e.target.files[0]) {
+                      setNewImageUrl(URL.createObjectURL(e.target.files[0]));
+                    }
+                  }}
+                  className="w-full px-4 py-2 border-2 border-green-300 rounded-lg"
+                />
+                {newImageUrl && (
+                  <img src={newImageUrl} alt="Preview" className="w-full h-32 object-cover rounded-lg mt-2" />
+                )}
               </div>
-            )}
-            <MenuForm
-              data={editFormData}
-              setData={setEditFormData}
-              onSubmit={saveEditedItem}
-              submitLabel="Enregistrer"
-              onCancel={() => { setEditingItem(null); setEditFormData(null); }}
-              notify={showNotification}
-            />
+              <button
+                onClick={addItem}
+                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold py-3 rounded-lg transition flex items-center justify-center gap-2"
+              >
+                {editingId ? (
+                  <>
+                    <Edit2 className="w-5 h-5" /> Modifier
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-5 h-5" /> Ajouter
+                  </>
+                )}
+              </button>
+              {editingId && (
+                <button
+                  onClick={cancelEdit}
+                  className="w-full bg-slate-400 hover:bg-slate-500 text-white font-bold py-2 rounded-lg transition"
+                >
+                  Annuler
+                </button>
+              )}
+            </div>
+
+            <div className="border-t-2 border-green-300 pt-4">
+              <h3 className="font-bold text-slate-700 mb-3">Menu ({menu.length})</h3>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {menu.length === 0 ? (
+                  <p className="text-slate-500 text-sm">Vide</p>
+                ) : (
+                  menu.map((item) => (
+                    <div key={item.id} className="bg-white/60 p-3 rounded-lg border border-green-200">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <p className="font-semibold text-slate-800">{item.name}</p>
+                          <p className="text-xs text-slate-600">{item.description}</p>
+                          <p className="text-sm font-bold text-green-600 mt-1">{(item.price_cents / 100).toFixed(2)}€</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => editItem(item)}
+                            className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition"
+                            title="Modifier"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => deleteItem(item.id)}
+                            className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg transition"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -31,6 +31,7 @@ export const api = {
   getMenu: () => request('/api/menu'),
   createMenuItem: (item) => request('/api/menu', { method: 'POST', body: JSON.stringify(item) }),
   updateMenuItem: (id, item) => request(`/api/menu/${id}`, { method: 'PUT', body: JSON.stringify(item) }),
+  deleteMenuItem: (id) => request(`/api/menu/${id}`, { method: 'DELETE' }),
   getQueue: () => request('/api/orders/queue'),
   createOrder: (order) => request('/api/orders', { method: 'POST', body: JSON.stringify(order) }),
   validateOrder: (id) => request(`/api/orders/${id}/validate`, { method: 'POST' }),

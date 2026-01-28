@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { estimateWaitSecondsForOrder } from '../services/estimator.js';
 
 const router = Router();
 
@@ -12,7 +13,7 @@ function io(req) {
 async function emitClientOrders(io, client_uid) {
   if (!client_uid) return;
   const [orders] = await pool.query(
-    `SELECT o.id, o.ticket_number, o.status, o.order_number, o.customer_name, o.created_at
+    `SELECT o.id, o.ticket_number, o.status, o.order_number, o.customer_name, o.created_at, o.estimated_wait_seconds
     FROM orders o
     WHERE o.client_uid = ? AND o.status != 'CANCELLED'
     ORDER BY o.created_at DESC LIMIT 20`,
@@ -41,7 +42,7 @@ router.post('/:id/cancel', async (req, res) => {
 router.get('/queue', async (req, res) => {
     const [[{ current }]] = await pool.query("SELECT COALESCE(MAX(ticket_number),0) AS current FROM orders WHERE status='SERVED'");
     const [queue] = await pool.query(
-      `SELECT o.ticket_number, o.status, o.id, o.client_uid, o.order_number, o.customer_name
+      `SELECT o.ticket_number, o.status, o.id, o.client_uid, o.order_number, o.customer_name, o.estimated_wait_seconds
       FROM orders o
       WHERE ((o.ticket_number IS NOT NULL AND o.status IN ('VALIDATED','PREPARING','READY') AND o.ticket_number > ?)
         OR (o.status='PENDING' AND o.ticket_number IS NULL))
@@ -67,6 +68,8 @@ router.post('/', async (req, res, next) => {
     for (const it of items) {
       await conn.query('INSERT INTO order_items (order_id, menu_item_id, quantity) VALUES (?,?,?)', [orderId, Number(it.menu_item_id), Number(it.quantity || 1)]);
     }
+    const estimatedWait = await estimateWaitSecondsForOrder(orderId);
+    await conn.query('UPDATE orders SET estimated_wait_seconds=? WHERE id=?', [estimatedWait, orderId]);
     await conn.commit();
 
     io(req).emit('order_update', { orderId, status: 'PENDING' });
@@ -115,6 +118,24 @@ router.post('/:id/served', requireAdmin, async (req, res) => {
     await emitClientOrders(io(req), order.client_uid);
   }
   res.json({ ok: true });
+});
+
+// GET /api/orders/:id/items -> détails items de la commande
+router.get('/:id/items', async (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const [items] = await pool.query(
+      `SELECT oi.id, oi.quantity, m.name, m.price_cents, m.description
+       FROM order_items oi
+       JOIN menu_items m ON oi.menu_item_id = m.id
+       WHERE oi.order_id = ?`,
+      [id]
+    );
+    res.json(items || []);
+  } catch (err) {
+    console.error('Erreur items:', err);
+    res.json([]);
+  }
 });
 
 export default router;
